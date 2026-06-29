@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent-z 深度研报分析</title>
+    <script>
+      // 捕获全局 JS 错误并显示在页面上，便于诊断空白页问题
+      window.__agentZErrors = [];
+      window.addEventListener("error", function (e) {
+        window.__agentZErrors.push("ERROR: " + e.message + " at " + (e.filename || "") + ":" + e.lineno);
+        showErrors();
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        window.__agentZErrors.push("UNHANDLED REJECTION: " + e.reason);
+        showErrors();
+      });
+      function showErrors() {
+        var el = document.getElementById("root") || document.body;
+        el.innerHTML = '<div style="padding:20px;color:red;font-family:monospace;white-space:pre-wrap;font-size:13px;line-height:1.6">' + window.__agentZErrors.join("\n\n") + "</div>";
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
