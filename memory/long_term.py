@@ -164,7 +164,23 @@ class LongTermMemory:
             self._cache[text] = vec
             return vec
 
-        # 尝试调用真实 embedding API（dashscope）
+        if self._embedding_provider == "dashscope":
+            api_key = os.getenv("DASHSCOPE_API_KEY", "")
+            if api_key:
+                try:
+                    import dashscope
+                    response = dashscope.TextEmbedding.call(
+                        model=self._embedding_model,
+                        input=text,
+                        api_key=api_key,
+                    )
+                    embedding = response["output"]["embeddings"][0]["embedding"]
+                    vec = [float(v) for v in embedding]
+                    self._cache[text] = vec
+                    return vec
+                except Exception:
+                    pass
+
         vec = _stub_embedding(text, self._embedding_dim)
         self._cache[text] = vec
         return vec

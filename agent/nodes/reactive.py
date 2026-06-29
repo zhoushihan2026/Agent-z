@@ -46,7 +46,7 @@ def reactive_agent(state: dict) -> dict:
 
     # 更新状态
     new_messages = messages + [ai_message]
-    result = {"messages": new_messages}
+    result = {"messages": new_messages, "_reactive_status": "正在生成快速回答"}
 
     # 有 tool_calls 时增加计数
     tool_calls = getattr(ai_message, "tool_calls", None) or []

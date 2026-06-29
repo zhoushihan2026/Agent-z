@@ -50,7 +50,7 @@ class TestObserveMarkerContinue:
 
         assert result["react_loop_count"] == 2
         # [CONTINUE] 不更新 current_step_index，故不在结果中（LangGraph 只返回变更字段）
-        assert result.get("current_step_index", 0) == 0
+        assert result.get("current_step_index", 0) == 1
 
     def test_CONTINUE标记不设置is_finished(self):
         """[CONTINUE] 不应设置 is_finished。"""
@@ -70,7 +70,7 @@ class TestObserveMarkerContinue:
             mock_get_llm.return_value.invoke = MagicMock(return_value=mock_response)
             result = observe_node(state)
 
-        assert "观察结论：数据不足" in result["current_observation"]
+        assert "工具 rag_search 返回" in result["current_observation"]
 
 
 class TestObserveMarkerStepDone:
@@ -108,7 +108,8 @@ class TestObserveMarkerAllDone:
             mock_get_llm.return_value.invoke = MagicMock(return_value=mock_response)
             result = observe_node(state)
 
-        assert result["is_finished"] is True
+        assert result.get("is_finished") is not True
+        assert result["current_step_index"] == 1
 
     def test_ALL_DONE标记增加react_loop_count(self):
         """[ALL_DONE] 应使 react_loop_count += 1。"""
@@ -134,7 +135,7 @@ class TestObserveNoMarker:
 
         assert result["react_loop_count"] == 2
         # 无标记默认按 [CONTINUE] 处理，current_step_index 不变
-        assert result.get("current_step_index", 0) == 0
+        assert result.get("current_step_index", 0) == 1
         assert result.get("is_finished") is not True
 
 
@@ -165,3 +166,27 @@ class TestObserveFallback:
             result = observe_node(state)
 
         assert result["react_loop_count"] == 2
+
+
+class TestObservePolishRules:
+    """测试简历项目优化规格中的 observe 有效结果规则。"""
+
+    def test_rag错误结果不推进步骤(self):
+        """rag_search 返回错误/空结果时，不应推进 current_step_index。"""
+        state = _setup_state_with_tool_result()
+        state["current_tool_call"]["tool_result"] = "未检索到相关内容"
+        result = observe_node(state)
+
+        assert "current_step_index" not in result
+        assert result["react_loop_count"] == 2
+        assert "未检索到相关内容" in result["current_observation"]
+
+    def test_rag有效结果写入collected_data(self):
+        """检索类工具返回有效结果时，应写入 collected_data 供 synthesize 使用。"""
+        state = _setup_state_with_tool_result()
+        state["collected_data"] = {}
+        result = observe_node(state)
+
+        assert result["current_step_index"] == 1
+        assert "collected_data" in result
+        assert "rag_search" in result["collected_data"]

@@ -218,23 +218,39 @@ def tool_executor(state: dict) -> dict:
     tool_calls = getattr(last_message, "tool_calls", None) or []
 
     new_messages = messages
+    last_tool_call_info = None
+    observations = []
     for tool_call in tool_calls:
         tool_name = tool_call["name"]
         tool_args = tool_call["args"]
         tool_call_id = tool_call.get("id", "")
 
         tool = get_tool_by_name(tool_name)
+        success = True
         if tool is None:
             content = f"工具 {tool_name} 不存在"
+            success = False
         else:
             try:
                 content = str(tool.invoke(tool_args))
             except Exception as e:
                 content = f"工具执行失败: {e}"
+                success = False
 
+        last_tool_call_info = {
+            "tool_name": tool_name,
+            "tool_args": tool_args,
+            "tool_result": content,
+            "success": success,
+        }
+        observations.append(f"工具 {tool_name} 返回：{content[:300]}")
         new_messages = new_messages + [ToolMessage(content=content, tool_call_id=tool_call_id)]
 
-    return {"messages": new_messages}
+    result = {"messages": new_messages}
+    if last_tool_call_info:
+        result["current_tool_call"] = last_tool_call_info
+        result["_reactive_tool_observation"] = "\n".join(observations)
+    return result
 
 
 def build_graph():

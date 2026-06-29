@@ -9,6 +9,8 @@
 """
 import logging
 
+from agent.llm import get_light_llm
+
 logger = logging.getLogger(__name__)
 
 # 工具结果展示截断长度
@@ -113,6 +115,23 @@ def observe_node(state: dict) -> dict:
             new_plan[new_step_index]["status"] = "running"
         result["plan"] = new_plan
         result["current_step_index"] = new_step_index
+
+        if tool_name in {"rag_search", "web_search", "browser_use"}:
+            collected_data = dict(state.get("collected_data") or {})
+            collected_data.setdefault(tool_name, [])
+            collected_data[tool_name].append(tool_result_display)
+            result["collected_data"] = collected_data
+        elif tool_name == "python_execute":
+            analysis_results = dict(state.get("analysis_results") or {})
+            analysis_results.setdefault(tool_name, [])
+            analysis_results[tool_name].append(tool_result_display)
+            result["analysis_results"] = analysis_results
+        elif tool_name == "file_operator":
+            collected_data = dict(state.get("collected_data") or {})
+            collected_data.setdefault("files", [])
+            collected_data["files"].append(tool_result_display)
+            result["collected_data"] = collected_data
+
         logger.info(
             "observe_node: 步骤 %d 完成，推进到步骤 %d/%d",
             current_step_index + 1,

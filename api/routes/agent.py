@@ -419,12 +419,19 @@ def run_agent_stream(message: str, session_id: str, graph, session_manager, repo
 
                     # 根据节点名映射为对应的 SSE 事件
                     if node_name == "assess":
+                        processing_mode = state_update.get("processing_mode", "deliberative")
                         yield format_sse(assess_event(
                             session_id=session_id,
                             query_type=state_update.get("query_type", "analytical"),
-                            processing_mode=state_update.get("processing_mode", "deliberative"),
-                            reasoning=state_update.get("processing_mode", "deliberative"),
+                            processing_mode=processing_mode,
+                            reasoning=processing_mode,
                         ))
+                        if processing_mode == "reactive":
+                            yield format_sse(think_event(
+                                session_id=session_id,
+                                step=1,
+                                content="正在理解问题并判断是否需要工具",
+                            ))
                     elif node_name == "memory_inject":
                         count = state_update.get("_injected_memory_count", 0)
                         if count > 0:
@@ -438,6 +445,29 @@ def run_agent_stream(message: str, session_id: str, graph, session_manager, repo
                             session_id=session_id,
                             plan=state_update.get("plan", []),
                         ))
+                    elif node_name == "reactive_agent":
+                        yield format_sse(think_event(
+                            session_id=session_id,
+                            step=1,
+                            content=state_update.get("_reactive_status", "正在生成快速回答"),
+                        ))
+                    elif node_name == "tools":
+                        tool_call = state_update.get("current_tool_call") or {}
+                        if tool_call:
+                            yield format_sse(act_event(
+                                session_id=session_id,
+                                step=1,
+                                tool=tool_call.get("tool_name", ""),
+                                args=tool_call.get("tool_args", {}),
+                            ))
+                        observation = state_update.get("_reactive_tool_observation")
+                        if observation or tool_call:
+                            yield format_sse(observe_event(
+                                session_id=session_id,
+                                step=1,
+                                content=observation or str(tool_call.get("tool_result", "")),
+                                success=tool_call.get("success", True),
+                            ))
                     elif node_name == "think":
                         step = len(state_update.get("think_history", []))
                         yield format_sse(think_event(

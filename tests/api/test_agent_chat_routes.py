@@ -165,3 +165,97 @@ class TestAgentStreamRunner:
         for evt in events:
             assert evt.startswith("data: ")
             assert evt.endswith("\n\n")
+
+    def test_reactive路径进入后推送轻量think事件(self, client):
+        """reactive 路径应在 assess 后推送轻量 think 状态，避免前端长时间空白等待。"""
+        import json
+        import tempfile
+        from api.routes.agent import run_agent_stream
+
+        mock_graph = MagicMock()
+
+        async def mock_astream(*args, **kwargs):
+            yield {"assess": {
+                "query_type": "informational",
+                "processing_mode": "reactive",
+                "messages": [],
+            }}
+            yield {"extract_response": {
+                "final_answer": "毛利率是毛利与营业收入的比率。",
+                "is_finished": True,
+            }}
+
+        mock_graph.astream = mock_astream
+        mgr = client.app.state.session_manager
+        sid = mgr.create_session(title="reactive")
+        reports_dir = tempfile.mkdtemp()
+        try:
+            events = list(run_agent_stream(
+                message="什么是毛利率？",
+                session_id=sid,
+                graph=mock_graph,
+                session_manager=mgr,
+                reports_dir=reports_dir,
+            ))
+        finally:
+            import shutil
+            shutil.rmtree(reports_dir, ignore_errors=True)
+
+        payloads = [json.loads(evt.removeprefix("data: ").strip()) for evt in events]
+        think_events = [p for p in payloads if p["type"] == "think"]
+        assert think_events
+        assert "正在理解问题" in think_events[0]["content"]["content"]
+
+    def test_reactive工具执行后推送observe摘要(self, client):
+        """reactive 工具节点完成后应推送 observe 摘要，复用现有前端展示。"""
+        import json
+        import tempfile
+        from api.routes.agent import run_agent_stream
+
+        mock_graph = MagicMock()
+
+        async def mock_astream(*args, **kwargs):
+            yield {"assess": {
+                "query_type": "informational",
+                "processing_mode": "reactive",
+                "messages": [],
+            }}
+            yield {"reactive_agent": {
+                "messages": [],
+                "_reactive_status": "正在生成快速回答",
+            }}
+            yield {"tools": {
+                "messages": [],
+                "_reactive_tool_observation": "工具 rag_search 返回：找到 3 条相关资料",
+                "current_tool_call": {
+                    "tool_name": "rag_search",
+                    "tool_args": {"query": "毛利率"},
+                    "tool_result": "找到 3 条相关资料",
+                    "success": True,
+                },
+            }}
+            yield {"extract_response": {
+                "final_answer": "毛利率是毛利与营业收入的比率。",
+                "is_finished": True,
+            }}
+
+        mock_graph.astream = mock_astream
+        mgr = client.app.state.session_manager
+        sid = mgr.create_session(title="reactive")
+        reports_dir = tempfile.mkdtemp()
+        try:
+            events = list(run_agent_stream(
+                message="什么是毛利率？",
+                session_id=sid,
+                graph=mock_graph,
+                session_manager=mgr,
+                reports_dir=reports_dir,
+            ))
+        finally:
+            import shutil
+            shutil.rmtree(reports_dir, ignore_errors=True)
+
+        payloads = [json.loads(evt.removeprefix("data: ").strip()) for evt in events]
+        observe_events = [p for p in payloads if p["type"] == "observe"]
+        assert observe_events
+        assert "rag_search" in observe_events[0]["content"]["content"]

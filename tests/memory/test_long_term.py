@@ -215,3 +215,44 @@ class TestEmbedding:
         v2 = ltm._embed("测试")
         assert v1 == v2
         ltm.close()
+
+    def test_dashscope_embedding调用text_embedding_v4(self, monkeypatch):
+        """dashscope provider 应调用 DashScope text-embedding-v4 并返回接口向量。"""
+        import sys
+        import types
+        from memory.long_term import LongTermMemory
+
+        calls = {}
+
+        class FakeTextEmbedding:
+            @staticmethod
+            def call(model, input, api_key):
+                calls["model"] = model
+                calls["input"] = input
+                calls["api_key"] = api_key
+                return {
+                    "output": {
+                        "embeddings": [
+                            {"embedding": [0.1, 0.2, 0.3]}
+                        ]
+                    }
+                }
+
+        fake_dashscope = types.SimpleNamespace(TextEmbedding=FakeTextEmbedding)
+        monkeypatch.setitem(sys.modules, "dashscope", fake_dashscope)
+        monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
+
+        ltm = LongTermMemory(
+            embedding_provider="dashscope",
+            embedding_model="text-embedding-v4",
+            embedding_dim=3,
+        )
+        vec = ltm._embed("测试文本")
+
+        assert vec == [0.1, 0.2, 0.3]
+        assert calls == {
+            "model": "text-embedding-v4",
+            "input": "测试文本",
+            "api_key": "test-key",
+        }
+        ltm.close()
