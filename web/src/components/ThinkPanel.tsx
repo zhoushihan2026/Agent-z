@@ -9,6 +9,7 @@ import { useTypewriter } from "@/hooks/useTypewriter";
 interface ThinkPanelProps {
   reactSteps: ReactStep[];
   isStreaming: boolean;
+  mode?: "deliberative" | "reactive" | "quick";
 }
 
 /** 复用打字机逻辑，返回当前应显示的文本 */
@@ -155,8 +156,10 @@ function formatArgs(args: Record<string, unknown>): string {
 
 // ========== ThinkPanel 主组件 ==========
 
-export function ThinkPanel({ reactSteps, isStreaming }: ThinkPanelProps) {
+export function ThinkPanel({ reactSteps, isStreaming, mode = "deliberative" }: ThinkPanelProps) {
   if (reactSteps.length === 0) return null;
+
+  const title = mode === "reactive" || mode === "quick" ? "快速响应过程" : "思考过程";
 
   return (
     <div className="space-y-2">
@@ -165,7 +168,7 @@ export function ThinkPanel({ reactSteps, isStreaming }: ThinkPanelProps) {
         <svg width="14" height="14" viewBox="0 0 20 20" fill="none" className="text-[#6366F1]">
           <path d="M10 2a8 8 0 100 16 8 8 0 000-16zM10 6v4M10 14h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
-        <span className="text-[12px] font-medium text-[#64748B]">思考过程</span>
+        <span className="text-[12px] font-medium text-[#64748B]">{title}</span>
         {isStreaming && (
           <span className="text-[11px] text-[#6366F1]">进行中</span>
         )}

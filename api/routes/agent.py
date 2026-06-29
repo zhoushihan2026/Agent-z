@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Agent chat 路由。
 
 对应 spec 2.5.2 节：POST /api/agent/chat SSE 流式接口。
@@ -400,127 +400,126 @@ def run_agent_stream(message: str, session_id: str, graph, session_manager, repo
 
     try:
         async def stream_events():
-            """异步遍历 graph.astream，映射为 SSE 事件。
+            """异步遍历 graph.astream，映射为 SSE 事件。"""
+            stream_error: Optional[Exception] = None
 
-            LangGraph 1.x: stream_mode="updates" yield {node_name: state_update}，
-            需用 .items() 遍历（0.x 时代直接 yield 二元组，1.x 已改为 dict）。
-            """
-            async for chunk in graph.astream(
-                initial_state, stream_mode="updates"
-            ):
-                if not isinstance(chunk, dict) or not chunk:
-                    continue
-                # updates 模式每个 chunk 通常是 {node_name: state_update}
-                for node_name, state_update in chunk.items():
-                    if not isinstance(state_update, dict):
+            try:
+                async for chunk in graph.astream(initial_state, stream_mode="updates"):
+                    if not isinstance(chunk, dict) or not chunk:
                         continue
-                    # 合并状态更新到最终状态
-                    final_state.update(state_update)
 
-                    # 根据节点名映射为对应的 SSE 事件
-                    if node_name == "assess":
-                        processing_mode = state_update.get("processing_mode", "deliberative")
-                        yield format_sse(assess_event(
-                            session_id=session_id,
-                            query_type=state_update.get("query_type", "analytical"),
-                            processing_mode=processing_mode,
-                            reasoning=processing_mode,
-                        ))
-                        if processing_mode == "reactive":
+                    for node_name, state_update in chunk.items():
+                        if not isinstance(state_update, dict):
+                            continue
+
+                        final_state.update(state_update)
+
+                        if node_name == "assess":
+                            processing_mode = state_update.get("processing_mode", "deliberative")
+                            yield format_sse(assess_event(
+                                session_id=session_id,
+                                query_type=state_update.get("query_type", "analytical"),
+                                processing_mode=processing_mode,
+                                reasoning=processing_mode,
+                            ))
+                            if processing_mode == "reactive":
+                                yield format_sse(think_event(
+                                    session_id=session_id,
+                                    step=1,
+                                    content="正在理解问题并判断是否需要工具",
+                                ))
+                        elif node_name == "memory_inject":
+                            count = state_update.get("_injected_memory_count", 0)
+                            if count > 0:
+                                yield format_sse(memory_event(
+                                    session_id=session_id,
+                                    count=count,
+                                    content=f"已注入 {count} 条相关历史经验",
+                                ))
+                        elif node_name == "plan":
+                            yield format_sse(plan_event(
+                                session_id=session_id,
+                                plan=state_update.get("plan", []),
+                            ))
+                        elif node_name == "reactive_agent":
                             yield format_sse(think_event(
                                 session_id=session_id,
                                 step=1,
-                                content="正在理解问题并判断是否需要工具",
+                                content=state_update.get("_reactive_status", "正在生成快速回答"),
                             ))
-                    elif node_name == "memory_inject":
-                        count = state_update.get("_injected_memory_count", 0)
-                        if count > 0:
-                            yield format_sse(memory_event(
+                        elif node_name == "tools":
+                            tool_call = state_update.get("current_tool_call") or {}
+                            if tool_call:
+                                yield format_sse(act_event(
+                                    session_id=session_id,
+                                    step=1,
+                                    tool=tool_call.get("tool_name", ""),
+                                    args=tool_call.get("tool_args", {}),
+                                ))
+                            observation = state_update.get("_reactive_tool_observation")
+                            if observation or tool_call:
+                                yield format_sse(observe_event(
+                                    session_id=session_id,
+                                    step=1,
+                                    content=observation or str(tool_call.get("tool_result", "")),
+                                    success=tool_call.get("success", True),
+                                ))
+                        elif node_name == "think":
+                            step = len(state_update.get("think_history", []))
+                            yield format_sse(think_event(
                                 session_id=session_id,
-                                count=count,
-                                content=f"已注入 {count} 条相关历史经验",
+                                step=step,
+                                content=state_update.get("current_thought", ""),
                             ))
-                    elif node_name == "plan":
-                        yield format_sse(plan_event(
-                            session_id=session_id,
-                            plan=state_update.get("plan", []),
-                        ))
-                    elif node_name == "reactive_agent":
-                        yield format_sse(think_event(
-                            session_id=session_id,
-                            step=1,
-                            content=state_update.get("_reactive_status", "正在生成快速回答"),
-                        ))
-                    elif node_name == "tools":
-                        tool_call = state_update.get("current_tool_call") or {}
-                        if tool_call:
+                        elif node_name == "act":
+                            step = len(state_update.get("act_history", []))
+                            tool_call = state_update.get("current_tool_call") or {}
                             yield format_sse(act_event(
                                 session_id=session_id,
-                                step=1,
+                                step=step,
                                 tool=tool_call.get("tool_name", ""),
                                 args=tool_call.get("tool_args", {}),
                             ))
-                        observation = state_update.get("_reactive_tool_observation")
-                        if observation or tool_call:
+                            if tool_call.get("tool_name") == "browser_use":
+                                yield format_sse(browser_act_event(
+                                    session_id=session_id,
+                                    action=tool_call.get("tool_args", {}).get("action", ""),
+                                    result=tool_call.get("tool_result", ""),
+                                ))
+                        elif node_name == "observe":
+                            step = len(state_update.get("observe_history", []))
+                            tool_call = state_update.get("current_tool_call") or {}
                             yield format_sse(observe_event(
                                 session_id=session_id,
-                                step=1,
-                                content=observation or str(tool_call.get("tool_result", "")),
+                                step=step,
+                                content=state_update.get("current_observation", ""),
                                 success=tool_call.get("success", True),
                             ))
-                    elif node_name == "think":
-                        step = len(state_update.get("think_history", []))
-                        yield format_sse(think_event(
-                            session_id=session_id,
-                            step=step,
-                            content=state_update.get("current_thought", ""),
-                        ))
-                    elif node_name == "act":
-                        step = len(state_update.get("act_history", []))
-                        tool_call = state_update.get("current_tool_call") or {}
-                        yield format_sse(act_event(
-                            session_id=session_id,
-                            step=step,
-                            tool=tool_call.get("tool_name", ""),
-                            args=tool_call.get("tool_args", {}),
-                        ))
-                        # 浏览器工具推送额外 browser_act 事件（phase2 新增）
-                        if tool_call.get("tool_name") == "browser_use":
-                            yield format_sse(browser_act_event(
+                        elif node_name == "synthesize":
+                            yield format_sse(synthesize_event(
                                 session_id=session_id,
-                                action=tool_call.get("tool_args", {}).get("action", ""),
-                                result=tool_call.get("tool_result", ""),
+                                content=state_update.get("final_answer", ""),
                             ))
-                    elif node_name == "observe":
-                        step = len(state_update.get("observe_history", []))
-                        tool_call = state_update.get("current_tool_call") or {}
-                        yield format_sse(observe_event(
-                            session_id=session_id,
-                            step=step,
-                            content=state_update.get("current_observation", ""),
-                            success=tool_call.get("success", True),
-                        ))
-                    elif node_name == "synthesize":
-                        yield format_sse(synthesize_event(
-                            session_id=session_id,
-                            content=state_update.get("final_answer", ""),
-                        ))
-                    elif node_name == "extract_response":
-                        # 快速响应式：extract_response 也触发 synthesize 事件，附加来源信息
-                        yield format_sse(synthesize_event(
-                            session_id=session_id,
-                            content=state_update.get("final_answer", ""),
-                            sources=state_update.get("reactive_sources"),
-                        ))
+                        elif node_name == "extract_response":
+                            yield format_sse(synthesize_event(
+                                session_id=session_id,
+                                content=state_update.get("final_answer", ""),
+                                sources=state_update.get("reactive_sources"),
+                            ))
+            except Exception as exc:
+                stream_error = exc
+                yield format_sse(error_event(
+                    session_id=session_id,
+                    node="graph",
+                    message=str(exc),
+                    recoverable=False,
+                ))
 
-            # 推送下载事件（仅在深思熟虑式下生成报告；快速响应式只展示在页面上）
             final_answer = final_state.get("final_answer", "")
             processing_mode = final_state.get("processing_mode")
-            download_url: Optional[str] = None
-            if final_answer and processing_mode != "reactive":
+            if final_answer and processing_mode != "reactive" and stream_error is None:
                 download_url = _save_report_and_get_url(reports_dir, session_id, final_answer)
                 if download_url:
-                    # download_url 形如 /api/reports/xxx.docx
                     saved_filename = os.path.basename(download_url)
                     yield format_sse(download_event(
                         session_id=session_id,
@@ -528,10 +527,8 @@ def run_agent_stream(message: str, session_id: str, graph, session_manager, repo
                         filename=saved_filename,
                     ))
 
-            # 推送 done 事件
             duration_ms = int((time.time() - start_time) * 1000)
             yield format_sse(done_event(session_id=session_id, duration_ms=duration_ms))
-
         # 运行异步生成器，同步 yield
         async_gen = stream_events()
         try:
@@ -630,3 +627,4 @@ async def chat(req: ChatRequest, request: Request):
             "X-Accel-Buffering": "no",  # 禁用 Nginx 缓冲
         },
     )
+

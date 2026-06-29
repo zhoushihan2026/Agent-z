@@ -99,7 +99,7 @@ export function AgentMessage({ message }: AgentMessageProps) {
         {/* 透明化思考面板 */}
         {reactSteps.length > 0 && (
           <div className="mb-3">
-            <ThinkPanel reactSteps={reactSteps} isStreaming={isStreaming} />
+            <ThinkPanel reactSteps={reactSteps} isStreaming={isStreaming} mode={assessMode} />
           </div>
         )}
 

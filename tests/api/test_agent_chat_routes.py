@@ -259,3 +259,39 @@ class TestAgentStreamRunner:
         observe_events = [p for p in payloads if p["type"] == "observe"]
         assert observe_events
         assert "rag_search" in observe_events[0]["content"]["content"]
+
+    def test_graph异常时仍推送error和done(self, client):
+        """graph 执行异常时应先推送 error，再推送 done，防止前端 loading 假死。"""
+        import json
+        import tempfile
+        from api.routes.agent import run_agent_stream
+
+        mock_graph = MagicMock()
+
+        async def mock_astream(*args, **kwargs):
+            yield {"assess": {
+                "query_type": "analytical",
+                "processing_mode": "deliberative",
+                "messages": [],
+            }}
+            raise RuntimeError("graph crashed")
+
+        mock_graph.astream = mock_astream
+        mgr = client.app.state.session_manager
+        sid = mgr.create_session(title="error")
+        reports_dir = tempfile.mkdtemp()
+        try:
+            events = list(run_agent_stream(
+                message="测试异常",
+                session_id=sid,
+                graph=mock_graph,
+                session_manager=mgr,
+                reports_dir=reports_dir,
+            ))
+        finally:
+            import shutil
+            shutil.rmtree(reports_dir, ignore_errors=True)
+
+        payloads = [json.loads(evt.removeprefix("data: ").strip()) for evt in events]
+        assert [p["type"] for p in payloads][-2:] == ["error", "done"]
+        assert "graph crashed" in payloads[-2]["content"]["message"]

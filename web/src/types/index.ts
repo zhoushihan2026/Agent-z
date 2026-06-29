@@ -16,7 +16,7 @@ export interface AssessEvent {
   type: "assess";
   content: {
     query_type: string;
-    processing_mode: "deliberative" | "quick";
+    processing_mode: "deliberative" | "reactive";
     reasoning: string;
   };
 }
@@ -132,7 +132,7 @@ export interface ReactStep {
 export interface AgentMessage {
   id: string;
   /** 意图识别结果 */
-  assessMode?: "deliberative" | "quick";
+  assessMode?: "deliberative" | "reactive";
   assessReasoning?: string;
   /** 任务规划步骤 */
   plan: PlanStep[];

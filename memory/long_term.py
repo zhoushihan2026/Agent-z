@@ -147,6 +147,20 @@ class LongTermMemory:
             except Exception:
                 pass
 
+    def _rebuild_faiss_index(self):
+        """根据当前经验列表重建 FAISS 索引。"""
+        if not self._use_faiss:
+            return
+        try:
+            import faiss
+            self._faiss = faiss.IndexFlatIP(self._embedding_dim)
+            vectors = [exp.get("embedding") for exp in self._experiences if exp.get("embedding")]
+            if vectors:
+                self._faiss.add(np.array(vectors, dtype=np.float32))
+        except Exception:
+            self._use_faiss = False
+            self._faiss = None
+
     def _embed(self, text: str) -> List[float]:
         """生成文本 embedding。
 
@@ -253,6 +267,37 @@ class LongTermMemory:
         score = self._compute_quality_score(state)
         if score < 0.5:
             return None
+
+        # 相同 query 去重：保留质量分更高的版本，避免长期记忆污染。
+        user_query = state.get("user_query", "")
+        query_type = state.get("query_type", "informational")
+        for idx, existing in enumerate(self._experiences):
+            if existing.get("query") != user_query:
+                continue
+            if existing.get("quality_score", 0.0) >= score:
+                return existing.get("experience_id")
+
+            exp_id = existing.get("experience_id", f"exp_{uuid.uuid4().hex[:12]}")
+            tools_used = list(set(
+                step.get("tool_used", "") for step in plan if step.get("tool_used")
+            ))
+            text_for_embed = f"{query_type} {user_query}"
+            vec = self._embed(text_for_embed)
+            self._experiences[idx] = {
+                "experience_id": exp_id,
+                "namespace": existing.get("namespace", "default"),
+                "task_type": query_type,
+                "query": user_query,
+                "approach": existing.get("approach", ""),
+                "tools_used": tools_used,
+                "conclusion": final_answer[:500],
+                "quality_score": round(score, 3),
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "embedding": vec,
+            }
+            self._rebuild_faiss_index()
+            self._save()
+            return exp_id
 
         # 构建经验
         exp_id = f"exp_{uuid.uuid4().hex[:12]}"

@@ -153,6 +153,38 @@ class TestLongTermMemory:
         ltm.clear()
         ltm.close()
 
+    def test_相同query只保留高质量版本(self, tmp_dir):
+        """相同 query 重复保存时，应去重并保留质量分更高的版本。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        base_state = {
+            "user_query": "分析中芯国际2024年财务表现",
+            "query_type": "analytical",
+            "is_finished": True,
+            "final_answer": "x" * 200,
+            "react_loop_count": 3,
+            "plan": [
+                {"step_index": 1, "description": "检索", "tool_used": "rag_search"},
+                {"step_index": 2, "description": "计算", "tool_used": "python_execute"},
+                {"step_index": 3, "description": "报告", "tool_used": "file_operator"},
+            ],
+        }
+        first_id = ltm.add_experience(base_state)
+        better_state = dict(base_state)
+        better_state["final_answer"] = "y" * 900
+        second_id = ltm.add_experience(better_state)
+
+        assert first_id is not None
+        assert second_id == first_id
+        assert len(ltm._experiences) == 1
+        assert ltm._experiences[0]["conclusion"] == "y" * 500
+        ltm.close()
+
 
 class TestQualityScore:
     """测试质量评分逻辑。"""

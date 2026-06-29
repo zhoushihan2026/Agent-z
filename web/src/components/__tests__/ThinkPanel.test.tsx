@@ -58,4 +58,17 @@ describe("ThinkPanel", () => {
     const borderEls = container.querySelectorAll("[class*='border-l']");
     expect(borderEls.length).toBe(0);
   });
+
+  it("reactive 模式显示快速响应过程标题", () => {
+    const steps: ReactStep[] = [
+      {
+        step: 1,
+        thinkContent: "正在理解问题",
+      },
+    ];
+    render(<ThinkPanel reactSteps={steps} isStreaming={true} mode="reactive" />);
+
+    expect(screen.getByText("快速响应过程")).toBeInTheDocument();
+    expect(screen.queryByText("思考过程")).not.toBeInTheDocument();
+  });
 });
