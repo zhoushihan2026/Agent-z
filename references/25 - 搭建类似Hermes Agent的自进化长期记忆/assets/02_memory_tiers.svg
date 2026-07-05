@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial, sans-serif">
+<title>四层记忆：原始事件整理后升格为稳定规则，任务按需取回</title>
+<rect width="100%" height="100%" fill="#FFFFFF"/>
+<text x="600" y="46" font-size="28" font-weight="700" fill="#253858" text-anchor="middle">四层记忆：左边看生成过程，右边看使用方式</text>
+
+<!-- production chain (left column, bottom-up) -->
+<rect x="90" y="480" width="560" height="104" rx="16" fill="#F5F7FA" stroke="#98A2B3" stroke-width="2"/>
+<text x="120" y="516" font-size="20" font-weight="800" fill="#344054" text-anchor="start">Raw Episodic Memory · 原始事件层</text>
+<text x="120" y="544" font-size="15" fill="#667085" text-anchor="start">事件流、对话、工具结果、执行记录 —— 只追加，不修饰</text>
+<text x="120" y="567" font-size="14" fill="#98A2B3" text-anchor="start">默认不进入上下文 · 作为证据可回读</text>
+
+<rect x="90" y="312" width="560" height="104" rx="16" fill="#EEF4FF" stroke="#1F6FEB" stroke-width="2"/>
+<text x="120" y="348" font-size="20" font-weight="800" fill="#1F6FEB" text-anchor="start">Consolidated Episodic Memory · 任务经验层</text>
+<text x="120" y="376" font-size="15" fill="#667085" text-anchor="start">任务摘要、失败模式、决策、证据链接</text>
+<text x="120" y="399" font-size="14" fill="#98A2B3" text-anchor="start">召回候选 · 每条都要能追到 raw 证据</text>
+
+<rect x="90" y="144" width="560" height="104" rx="16" fill="#EDF7EE" stroke="#2E7D32" stroke-width="2"/>
+<text x="120" y="180" font-size="20" font-weight="800" fill="#2E7D32" text-anchor="start">Semantic / Policy Memory · 稳定规则层</text>
+<text x="120" y="208" font-size="15" fill="#667085" text-anchor="start">稳定事实、用户偏好、项目规则、可复用策略</text>
+<text x="120" y="231" font-size="14" fill="#98A2B3" text-anchor="start">优先作为候选 · 少而稳定 · 有升格理由和置信度</text>
+
+<!-- vertical arrows between production layers -->
+<line x1="370" y1="480" x2="370" y2="426" stroke="#1F6FEB" stroke-width="3"/>
+<polygon points="370,416 362,432 378,432" fill="#1F6FEB"/>
+<text x="388" y="452" font-size="15" font-weight="600" fill="#1F6FEB" text-anchor="start">整理（consolidation）：摘要 + 证据链接</text>
+
+<line x1="370" y1="312" x2="370" y2="258" stroke="#2E7D32" stroke-width="3"/>
+<polygon points="370,248 362,264 378,264" fill="#2E7D32"/>
+<text x="388" y="284" font-size="15" font-weight="600" fill="#2E7D32" text-anchor="start">升格：重复出现 / 高风险 / 用户确认</text>
+
+<!-- consumer (right column) -->
+<rect x="760" y="230" width="360" height="150" rx="16" fill="#253858" stroke="#253858" stroke-width="2"/>
+<text x="940" y="272" font-size="21" font-weight="800" fill="#FFFFFF" text-anchor="middle">Working Memory</text>
+<text x="940" y="300" font-size="15" fill="#D8E0EE" text-anchor="middle">当前上下文窗口</text>
+<text x="940" y="326" font-size="15" fill="#D8E0EE" text-anchor="middle">只放本轮任务要用的信息</text>
+<text x="940" y="352" font-size="14" fill="#9FB0CC" text-anchor="middle">随任务生成 · 用完即弃</text>
+
+<!-- recall arrows from three layers to working memory -->
+<line x1="650" y1="196" x2="756" y2="268" stroke="#2E7D32" stroke-width="3"/>
+<polygon points="764,273 748,272 755,258" fill="#2E7D32"/>
+<line x1="650" y1="364" x2="756" y2="316" stroke="#1F6FEB" stroke-width="2.5"/>
+<polygon points="764,312 750,320 745,306" fill="#1F6FEB"/>
+<line x1="650" y1="532" x2="756" y2="360" stroke="#98A2B3" stroke-width="2" stroke-dasharray="7,5"/>
+<polygon points="760,352 748,362 738,352" fill="#98A2B3"/>
+
+<text x="812" y="196" font-size="14" font-weight="600" fill="#2E7D32" text-anchor="start">规则优先进入</text>
+<text x="700" y="416" font-size="14" font-weight="600" fill="#1F6FEB" text-anchor="start">经验按相关性挑选</text>
+<text x="742" y="486" font-size="14" fill="#667085" text-anchor="start">原始证据只在需要时回读</text>
+
+<text x="600" y="620" font-size="15" fill="#667085" text-anchor="middle">分层的意义不是名称好看，而是每一层的管理方式不同：进入上下文的默认权限、修正方式、清理策略都不一样</text>
+</svg>

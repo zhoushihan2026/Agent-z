@@ -19,7 +19,25 @@ logger = logging.getLogger(__name__)
 MAX_LAST_RESULT_IN_PROMPT = 500
 
 # 同一工具允许的最大重复调用次数（超过后强制禁止）
-MAX_SAME_TOOL_CALLS = 2
+# 保留常量供兼容（已不再用于工具调用限制，仅统计用途）
+
+# 从文本中提取工具意图的正则模式
+_TOOL_NAME_PATTERNS = [
+    (r"web[_\s]?search", "web_search"),
+    (r"rag[_\s]?search", "rag_search"),
+    (r"browser[_\s]?use", "browser_use"),
+    (r"python[_\s]?execute", "python_execute"),
+    (r"file[_\s]?operator", "file_operator"),
+    (r"terminate", "terminate"),
+]
+
+# 从文本中提取查询参数的正则
+_QUERY_PATTERNS = [
+    r'query["\s:=]+["\']([^"\']+)["\']',
+    r'搜索[：:\s]*["\']([^"\']+)["\']',
+    r'查询[：:\s]*["\']([^"\']+)["\']',
+    r'检索[：:\s]*["\']([^"\']+)["\']',
+]
 
 # 从查询中提取公司名称的模式（非贪婪匹配，避免粘上左边多余字符）
 _COMPANY_PATTERN = re.compile(
@@ -28,8 +46,11 @@ _COMPANY_PATTERN = re.compile(
     r"电子|软件|网络|数据|传媒|国际))"
 )
 
-# rag_search 返回空或不相关时的标志文本
-_NO_RESULT_FLAGS = ["未检索到相关内容", "Error", "失败", "错误", "不存在"]
+# 工具返回空、失败或不可用时的标志文本
+_NO_RESULT_FLAGS = [
+    "未检索到相关内容", "Error", "失败", "错误", "不存在",
+    "BROWSER_UNAVAILABLE", "404", "页面不见了", "页面不存在", "访问失败",
+]
 
 
 def _extract_entities(text: str) -> set:
@@ -42,6 +63,99 @@ def _extract_entities(text: str) -> set:
         实体名称集合
     """
     return set(m.group(0) for m in _COMPANY_PATTERN.finditer(text))
+
+
+def _extract_fallback_tool_call(text: str, user_query: str) -> dict:
+    """从 LLM 文本输出中解析意图工具调用，当 LLM 未生成结构化 tool_calls 时使用。
+
+    解析策略：
+    1. 用正则从文本中匹配工具名称（web_search / rag_search / browser_use 等）
+    2. 用正则从文本中提取查询参数（query 值）
+    3. 若无法提取参数，用 user_query 兜底
+
+    参数:
+        text: LLM 的文本输出
+        user_query: 用户原始查询
+
+    返回:
+        结构化 tool_call 字典，或 None（无法解析时）
+    """
+    if not text:
+        return None
+
+    text_lower = text.lower()
+
+    # 步骤 1：匹配工具名
+    detected_tool = None
+    for pattern, tool_name in _TOOL_NAME_PATTERNS:
+        if re.search(pattern, text_lower):
+            detected_tool = tool_name
+            break
+
+    if not detected_tool:
+        return None
+
+    # 步骤 2：提取查询参数
+    query_value = None
+    for qp in _QUERY_PATTERNS:
+        m = re.search(qp, text, re.IGNORECASE)
+        if m:
+            query_value = m.group(1).strip()
+            break
+
+    if not query_value:
+        query_value = user_query
+
+    # 步骤 3：构造 tool_call
+    import uuid
+    tool_call_id = f"fallback_{uuid.uuid4().hex[:8]}"
+
+    if detected_tool == "web_search":
+        return {
+            "name": "web_search",
+            "args": {"query": query_value},
+            "id": tool_call_id,
+        }
+    elif detected_tool == "rag_search":
+        return {
+            "name": "rag_search",
+            "args": {"query": query_value},
+            "id": tool_call_id,
+        }
+    elif detected_tool == "browser_use":
+        # 根据 query_value 判断应该使用哪个 action：
+        # - 如果 query_value 看起来像 URL（包含 http/https），则用 go_to_url
+        # - 否则用 web_search
+        if query_value and re.match(r"https?://", query_value):
+            return {
+                "name": "browser_use",
+                "args": {"action": "go_to_url", "url": query_value},
+                "id": tool_call_id,
+            }
+        else:
+            return {
+                "name": "browser_use",
+                "args": {"action": "web_search", "query": query_value},
+                "id": tool_call_id,
+            }
+    elif detected_tool == "python_execute":
+        return {
+            "name": "python_execute",
+            "args": {"code": f"# 计算: {query_value}"},
+            "id": tool_call_id,
+        }
+    elif detected_tool == "terminate":
+        return {
+            "name": "terminate",
+            "args": {"reason": "分析已完成"},
+            "id": tool_call_id,
+        }
+    else:
+        return {
+            "name": detected_tool,
+            "args": {"query": query_value},
+            "id": tool_call_id,
+        }
 
 
 def _is_rag_result_relevant(user_query: str, tool_result: str) -> bool:
@@ -129,24 +243,22 @@ def _build_tool_frequency_summary(act_history: List[dict], user_query: str = "")
             if not _is_rag_result_relevant(user_query, result):
                 is_empty = True
 
+        if name == "browser_use" and "BROWSER_UNAVAILABLE" in result:
+            is_empty = True
+
         if is_empty:
             empty_results[name] += 1
 
     lines = []
     for tool_name, count in tool_counts.most_common():
         empty_count = empty_results.get(tool_name, 0)
-        if count >= MAX_SAME_TOOL_CALLS and empty_count >= count:
+        if empty_count > 0:
             lines.append(
-                f"- {tool_name}: 已调用 {count} 次且均未获取有效数据，"
-                f"【禁止再次调用此工具】"
-            )
-        elif count >= MAX_SAME_TOOL_CALLS:
-            lines.append(
-                f"- {tool_name}: 已调用 {count} 次（达到上限，建议换其他工具）"
+                f"- {tool_name}: 已调用 {count} 次，其中 {empty_count} 次未获取有效数据"
             )
         else:
             lines.append(
-                f"- {tool_name}: 已调用 {count} 次"
+                f"- {tool_name}: 已调用 {count} 次，均已获取有效数据"
             )
 
     return "\n".join(lines) if lines else "（无法统计）"
@@ -165,6 +277,9 @@ def think_node(state: dict) -> dict:
     react_loop_count = state.get("react_loop_count", 0)
     max_react_loops = state.get("max_react_loops", 15)
     plan = state.get("plan", [])
+    current_step_index = state.get("current_step_index", 0)
+    current_step_display = current_step_index + 1
+    plan_len = len(plan)
     collected_data = state.get("collected_data", [])
     analysis_results = state.get("analysis_results", [])
     observe_history = state.get("observe_history", [])
@@ -186,17 +301,26 @@ def think_node(state: dict) -> dict:
     # 构建工具频次摘要（核心：阻止重复调用无效工具 + rag_search 相关性检测）
     tool_frequency_summary = _build_tool_frequency_summary(act_history, user_query)
 
+    # 注入当前日期和时间上下文
+    from datetime import datetime
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    time_context = state.get("time_context") or current_date
+
     # 构造 Prompt
     prompt = THINK_PROMPT.format(
         user_query=user_query,
         react_loop_count=react_loop_count,
         max_react_loops=max_react_loops,
+        current_step_display=current_step_display,
+        plan_len=plan_len,
         plan=plan,
         collected_data=collected_data,
         analysis_results=analysis_results,
         last_tool_name=last_tool_name,
         last_tool_result=last_tool_result,
         tool_frequency_summary=tool_frequency_summary,
+        current_date=current_date,
+        time_context=time_context,
     )
 
     try:
@@ -214,6 +338,85 @@ def think_node(state: dict) -> dict:
         content = f"思考节点异常：{e}"
         from langchain_core.messages import AIMessage
         ai_message = AIMessage(content=content)
+
+    # --- 修复：当 LLM 生成了 tool_calls 但 content 为空时，自动生成摘要 ---
+    # 避免 think_history 存空字符串，导致前端 Think 区域空白
+    tool_calls = getattr(ai_message, "tool_calls", None) or []
+    if tool_calls and not content.strip():
+        tc = tool_calls[0]
+        tc_name = tc.get("name", "未知工具")
+        tc_args = tc.get("args", {})
+        # 为常见工具生成可读摘要
+        if tc_name == "rag_search":
+            content = f"从知识库检索：{tc_args.get('query', '')}"
+        elif tc_name == "web_search":
+            content = f"搜索互联网：{tc_args.get('query', '')}"
+        elif tc_name == "browser_use":
+            content = f"使用浏览器：{tc_args.get('action', '')} {tc_args.get('url', '')}"
+        elif tc_name == "python_execute":
+            content = f"执行Python代码进行计算分析"
+        elif tc_name == "terminate":
+            content = "所有步骤已完成，调用terminate结束循环"
+        else:
+            content = f"决定调用工具：{tc_name}"
+        # 用带摘要的 content 替换原 ai_message 的空 content
+        from langchain_core.messages import AIMessage as _AIMsg
+        ai_message = _AIMsg(
+            content=content,
+            tool_calls=ai_message.tool_calls if hasattr(ai_message, "tool_calls") else [],
+            id=getattr(ai_message, "id", None),
+        )
+
+    # --- 修复：当 LLM 未生成 tool_calls 但 plan 未完成时的处理 ---
+    # 新增：允许"纯推理轮"——如果思考内容明确表示数据已充分进入分析，则不强制构造 fallback
+    if not tool_calls and plan and current_step_index < len(plan):
+        step_status = plan[current_step_index].get("status", "")
+        if step_status not in ("completed", "done"):
+            # 检测是否为"纯推理轮"（数据已充分，进入分析阶段）
+            _PURE_REASONING_SIGNALS = [
+                "数据已充分", "进入分析阶段", "数据已足够", "已有足够数据",
+                "数据充分", "收集完毕", "数据完整", "信息已充分",
+                "无需再调用", "不需要再调用", "可以直接分析", "可以开始分析",
+            ]
+            is_pure_reasoning = any(sig in content for sig in _PURE_REASONING_SIGNALS)
+
+            if is_pure_reasoning:
+                # 纯推理轮：允许不调用工具，但必须有实质性分析内容
+                logger.info(
+                    "think_node: 检测到纯推理轮（数据已充分），不强制构造 fallback tool_call"
+                )
+                # 如果内容太短（<50字），可能是敷衍，仍需强制工具调用
+                if len(content.strip()) >= 50:
+                    # 合法的纯推理轮，不构造 fallback
+                    pass
+                else:
+                    # 内容太短，可能是敷衍，尝试构造 fallback
+                    fallback_tc = _extract_fallback_tool_call(content, user_query)
+                    if fallback_tc:
+                        logger.info(
+                            "think_node: 纯推理轮内容过短（<50字），强制构造 fallback: %s",
+                            fallback_tc.get("name"),
+                        )
+                        from langchain_core.messages import AIMessage as _AIMsg2
+                        ai_message = _AIMsg2(
+                            content=content or f"决定调用工具：{fallback_tc['name']}",
+                            tool_calls=[fallback_tc],
+                        )
+                        tool_calls = [fallback_tc]
+            else:
+                # 非纯推理轮：plan 未完成但 LLM 没调用工具 → 尝试从文本提取工具名
+                fallback_tc = _extract_fallback_tool_call(content, user_query)
+                if fallback_tc:
+                    logger.info(
+                        "think_node: LLM 未生成 tool_calls，从文本解析意图构造 fallback: %s",
+                        fallback_tc.get("name"),
+                    )
+                    from langchain_core.messages import AIMessage as _AIMsg2
+                    ai_message = _AIMsg2(
+                        content=content or f"决定调用工具：{fallback_tc['name']}",
+                        tool_calls=[fallback_tc],
+                    )
+                    tool_calls = [fallback_tc]
 
     # 更新状态
     new_think_history = think_history + [content]

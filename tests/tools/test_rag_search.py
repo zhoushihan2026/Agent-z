@@ -173,6 +173,17 @@ class TestRagSearchTool:
             result = rag_search.invoke({"query": "测试"})
         assert "2024年报.pdf" in result
 
+    def test_主体不匹配结果应判定为无效(self):
+        """用户问小米时，若检索结果只有中芯国际内容，不应继续生成答案。"""
+        mock_results = [
+            {"text": "中芯国际 2024 年营收增长", "file_name": "中芯国际2024年报.pdf", "page": 5},
+        ]
+        with patch.object(rag_search_module, "_retrieve", return_value=mock_results), \
+             patch.object(rag_search_module, "_generate_answer", return_value="不应被调用") as mock_generate:
+            result = rag_search.invoke({"query": "分析小米集团2024的简要分析报告"})
+        assert "主体" in result or "目标公司" in result or "未检索到相关内容" in result
+        mock_generate.assert_not_called()
+
     def test_检索异常应返回错误信息(self):
         """检索后端异常时应返回错误信息，不抛异常。"""
         with patch.object(rag_search_module, "_retrieve", side_effect=Exception("RAG-z 连接失败")):

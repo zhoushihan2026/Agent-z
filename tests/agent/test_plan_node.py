@@ -53,17 +53,19 @@ class TestPlanNodeNormal:
         assert "description" in step
         assert "tool_used" in step
 
-    def test_plan步骤status默认为pending(self):
-        """plan 步骤应初始化 status=pending。"""
+    def test_plan第一步status为in_progress(self):
+        """plan 第一步应初始化 status=in_progress，后续步骤为 pending。"""
         state = create_initial_state("分析查询")
         mock_response = _make_ai_message(
-            '{"plan": [{"step_index": 1, "description": "检索", "tool_used": "rag_search"}]}'
+            '{"plan": [{"step_index": 1, "description": "检索", "tool_used": "rag_search"},'
+            '{"step_index": 2, "description": "分析", "tool_used": "python_execute"}]}'
         )
         with patch("agent.nodes.plan.get_llm") as mock_get_llm:
             mock_get_llm.return_value.invoke = MagicMock(return_value=mock_response)
             result = plan_node(state)
 
-        assert result["plan"][0]["status"] == "pending"
+        assert result["plan"][0]["status"] == "in_progress"
+        assert result["plan"][1]["status"] == "pending"
 
 
 class TestPlanNodeStepLimit:

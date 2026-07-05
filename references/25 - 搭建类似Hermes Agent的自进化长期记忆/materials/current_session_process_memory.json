@@ -1,0 +1,10 @@
+{
+  "project_id": "travel-agent",
+  "session_id": "s_0701_shanghai",
+  "process_memory": [
+    {"note": "迪士尼这类远距离大项已确认单独占一整天，不和市区景点混排。", "status": "resolved"},
+    {"note": "route_checker 判过‘迪士尼+市区自然博物馆同一天’通勤过长，正在改。", "status": "open"},
+    {"note": "还没和用户确认住在哪个区，第二天通勤估算暂按市中心。", "status": "open"},
+    {"note": "本次输出要按用户长期要求附上路线检查结论。", "status": "evidence"}
+  ]
+}

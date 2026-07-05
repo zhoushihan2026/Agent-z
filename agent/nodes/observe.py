@@ -17,7 +17,24 @@ logger = logging.getLogger(__name__)
 MAX_RESULT_DISPLAY = 800
 
 # 被识别为空/失败结果的标志文本
-_NO_RESULT_FLAGS = ["未检索到相关内容", "Error", "失败", "错误", "不存在"]
+_NO_RESULT_FLAGS = [
+    "未检索到相关内容", "Error", "失败", "错误", "不存在",
+    "BROWSER_UNAVAILABLE", "404", "页面不见了", "页面不存在", "访问失败",
+]
+
+# python_execute 代码中编造数据的标志文本
+_FABRICATED_DATA_FLAGS = [
+    "示例数据", "假设数据", "placeholder", "示例，若查得真实",
+    "数据为示例", "假设已获得", "假设已获取", "仅为示例",
+    "若查得真实数据可替换", "数据为估算", "数据为假设",
+]
+
+# 纯推理轮信号词（think_node 未调用工具但数据已充分时使用）
+_PURE_REASONING_SIGNALS = [
+    "数据已充分", "进入分析阶段", "数据已足够", "已有足够数据",
+    "数据充分", "收集完毕", "数据完整", "信息已充分",
+    "无需再调用", "不需要再调用", "可以直接分析", "可以开始分析",
+]
 
 
 def _has_valid_data(tool_result: str) -> bool:
@@ -51,7 +68,7 @@ def observe_node(state: dict) -> dict:
     返回:
         状态更新字典，包含 current_observation/react_loop_count/plan 等
     """
-    tool_call = state.get("current_tool_call", {})
+    tool_call = state.get("current_tool_call") or {}
     tool_name = tool_call.get("tool_name", "")
     tool_result_raw = tool_call.get("tool_result", "")
     success = tool_call.get("success", False)
@@ -59,6 +76,84 @@ def observe_node(state: dict) -> dict:
     observe_history = list(state.get("observe_history", []))
     plan = list(state.get("plan", []))
     current_step_index = state.get("current_step_index", 0)
+
+    # 本轮没有工具调用（思考节点纯推理或直接给出结论）
+    # 判断当前步骤是否已完成：如果当前步骤未完成，检查是否为合法的纯推理轮
+    if not tool_name:
+        plan = list(state.get("plan", []))
+        current_step_index = state.get("current_step_index", 0)
+
+        # 从 think_history 中获取最新思考内容，检测是否为纯推理轮
+        think_history = list(state.get("think_history", []))
+        last_think = think_history[-1] if think_history else ""
+        is_pure_reasoning = any(sig in last_think for sig in _PURE_REASONING_SIGNALS)
+
+        step_incomplete = False
+        if plan and current_step_index < len(plan):
+            step_status = plan[current_step_index].get("status", "")
+            if step_status not in ("completed", "done"):
+                step_incomplete = True
+
+        if step_incomplete and is_pure_reasoning and len(last_think.strip()) >= 50:
+            # 纯推理轮：数据已充分，思考节点做了实质性分析，允许推进步骤
+            observation = (
+                "思考节点进行了纯推理分析（数据已充分），当前步骤视为完成，推进到下一步。"
+            )
+            new_plan = list(plan)
+            new_plan[current_step_index] = dict(new_plan[current_step_index])
+            new_plan[current_step_index]["status"] = "completed"
+            new_plan[current_step_index]["tool_used"] = "pure_reasoning"
+            new_step_index = current_step_index + 1
+            if new_step_index < len(new_plan):
+                new_plan[new_step_index] = dict(new_plan[new_step_index])
+                new_plan[new_step_index]["status"] = "in_progress"
+            logger.info(
+                "observe_node: 纯推理轮推进步骤 %d → %d",
+                current_step_index + 1,
+                new_step_index + 1,
+            )
+            return {
+                "current_observation": observation,
+                "react_loop_count": react_loop_count + 1,
+                "observe_history": observe_history + [observation],
+                "plan": new_plan,
+                "current_step_index": new_step_index,
+            }
+        elif step_incomplete:
+            # 当前步骤未完成，且不是合法纯推理轮 → 不允许结束，继续循环
+            observation = (
+                "思考节点未发起新的工具调用，但当前步骤尚未完成。"
+                "必须继续调用工具完成当前步骤，或调用 terminate 结束。"
+            )
+            return {
+                "current_observation": observation,
+                "react_loop_count": react_loop_count + 1,
+                "observe_history": observe_history + [observation],
+            }
+        else:
+            # 当前步骤已完成或索引越界，检查是否所有步骤都已完成
+            all_steps_done = True
+            if plan:
+                for step in plan:
+                    if step.get("status", "") not in ("completed", "done", "skipped"):
+                        all_steps_done = False
+                        break
+
+            if all_steps_done:
+                observation = "思考节点未发起新的工具调用，所有计划步骤已完成，准备生成最终报告。"
+                return {
+                    "current_observation": observation,
+                    "react_loop_count": react_loop_count + 1,
+                    "observe_history": observe_history + [observation],
+                    "is_finished": True,
+                }
+            else:
+                observation = "思考节点未发起新的工具调用，但仍有步骤未完成，继续循环。"
+                return {
+                    "current_observation": observation,
+                    "react_loop_count": react_loop_count + 1,
+                    "observe_history": observe_history + [observation],
+                }
 
     # 截断过长的工具结果，用于前端展示和 think 上下文
     if tool_result_raw:
@@ -88,31 +183,62 @@ def observe_node(state: dict) -> dict:
         "current_observation": observation,
         "react_loop_count": new_react_loop_count,
         "observe_history": new_observe_history,
+        # 向前传递 current_tool_call，确保 SSE 的 observe 事件能读取
+        # 正确的 tool_name / tool_call_id / success，与 act 事件配对
+        "current_tool_call": tool_call if tool_call else None,
     }
 
     if is_terminated:
         result["is_finished"] = True
-        # 终止时将当前步骤之后的步骤全部标记为 skipped
-        # current_step_index 保持不变（已完成步骤为 0 到 current_step_index-1）
+        # terminate 被调用时，当前步骤视为已完成（Agent 已收集足够数据才决定终止）
+        # 当前步骤之后的步骤标记为 skipped
         if plan and current_step_index < len(plan):
             new_plan = list(plan)
-            for i in range(current_step_index, len(new_plan)):
+            # 当前步骤标记为 completed
+            new_plan[current_step_index] = dict(new_plan[current_step_index])
+            new_plan[current_step_index]["status"] = "completed"
+            new_plan[current_step_index]["tool_used"] = "terminate"
+            # 后续步骤标记为 skipped
+            for i in range(current_step_index + 1, len(new_plan)):
                 new_plan[i] = dict(new_plan[i])
                 new_plan[i]["status"] = "skipped"
             result["plan"] = new_plan
-        logger.info("observe_node: terminate 被调用，标记 is_finished")
+        logger.info("observe_node: terminate 被调用，当前步骤标记 completed，后续标记 skipped")
     elif plan and current_step_index < len(plan) and _has_valid_data(tool_result_raw):
+        # 检测 python_execute 代码中是否编造数据
+        if tool_name == "python_execute":
+            tool_args = tool_call.get("tool_args", {})
+            code_content = str(tool_args.get("code", "")) + str(tool_result_raw)
+            fabricated = False
+            for flag in _FABRICATED_DATA_FLAGS:
+                if flag in code_content:
+                    fabricated = True
+                    break
+            if fabricated:
+                observation = (
+                    f"工具 python_execute 返回成功，但代码中包含编造/假设数据"
+                    f"（如'示例数据'、'假设数据'等），视为无效结果。"
+                    f"必须先通过 rag_search/web_search 获取真实数据后再执行计算分析。"
+                )
+                logger.warning("observe_node: 检测到 python_execute 编造数据，不推进步骤")
+                return {
+                    "current_observation": observation,
+                    "react_loop_count": new_react_loop_count,
+                    "observe_history": new_observe_history + [observation],
+                    "current_tool_call": tool_call if tool_call else None,
+                }
+
         # 工具返回有效数据，当前步骤完成，推进到下一步
         new_plan = list(plan)
-        # 标记当前步骤为 done
+        # 标记当前步骤为 completed
         new_plan[current_step_index] = dict(new_plan[current_step_index])
-        new_plan[current_step_index]["status"] = "done"
+        new_plan[current_step_index]["status"] = "completed"
         new_plan[current_step_index]["tool_used"] = tool_name
         new_step_index = current_step_index + 1
         # 如果下一步存在，标记为 in_progress
         if new_step_index < len(new_plan):
             new_plan[new_step_index] = dict(new_plan[new_step_index])
-            new_plan[new_step_index]["status"] = "running"
+            new_plan[new_step_index]["status"] = "in_progress"
         result["plan"] = new_plan
         result["current_step_index"] = new_step_index
 

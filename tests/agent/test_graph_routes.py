@@ -3,7 +3,7 @@
 
 验证 spec 2.2.3 节条件边路由逻辑：
 - route_after_assess: processing_mode="reactive" → reactive_agent；"deliberative" → plan
-- route_after_reactive: LLM 输出含 tool_calls 且 count < max → tools；否则 → extract_response
+- route_after_reactive: LLM 输出含 tool_calls → tools；否则 → extract_response（无调用次数上限）
 - route_after_observe: 卡死/ALL_DONE/STEP_DONE(末步)/超限 → synthesize；否则 → think
 """
 import pytest
@@ -56,44 +56,29 @@ def _make_ai_message_with_tool_calls(tool_calls):
 class TestRouteAfterReactive:
     """测试 reactive_agent 后的路由。"""
 
-    def test_有tool_calls且未达上限路由到tools(self):
-        """LLM 输出含 tool_calls 且 count < max 应路由到 tools。"""
+    def test_有tool_calls路由到tools(self):
+        """LLM 输出含 tool_calls 应路由到 tools（无调用次数上限）。"""
         state = create_initial_state("今天股价")
         state["messages"] = [_make_ai_message_with_tool_calls([{"name": "web_search", "args": {}, "id": "1"}])]
-        state["reactive_tool_call_count"] = 0
-        state["max_reactive_tool_calls"] = 5
+        assert route_after_reactive(state) == "tools"
+
+    def test_有tool_calls多次调用仍路由到tools(self):
+        """即使 reactive_tool_call_count 很高，有 tool_calls 仍路由到 tools（无上限限制）。"""
+        state = create_initial_state("测试")
+        state["messages"] = [_make_ai_message_with_tool_calls([{"name": "web_search", "args": {}, "id": "1"}])]
+        state["reactive_tool_call_count"] = 10
         assert route_after_reactive(state) == "tools"
 
     def test_无tool_calls路由到extract_response(self):
         """LLM 输出无 tool_calls 应路由到 extract_response（直接回答）。"""
         state = create_initial_state("什么是ROE")
         state["messages"] = [AIMessage(content="ROE是净资产收益率")]
-        state["reactive_tool_call_count"] = 0
-        state["max_reactive_tool_calls"] = 5
-        assert route_after_reactive(state) == "extract_response"
-
-    def test_达到上限强制收敛到extract_response(self):
-        """reactive_tool_call_count >= max 时强制路由到 extract_response。"""
-        state = create_initial_state("测试")
-        state["messages"] = [_make_ai_message_with_tool_calls([{"name": "web_search", "args": {}, "id": "1"}])]
-        state["reactive_tool_call_count"] = 5
-        state["max_reactive_tool_calls"] = 5
-        assert route_after_reactive(state) == "extract_response"
-
-    def test_超过上限强制收敛到extract_response(self):
-        """reactive_tool_call_count > max 时强制路由到 extract_response。"""
-        state = create_initial_state("测试")
-        state["messages"] = [_make_ai_message_with_tool_calls([{"name": "web_search", "args": {}, "id": "1"}])]
-        state["reactive_tool_call_count"] = 6
-        state["max_reactive_tool_calls"] = 5
         assert route_after_reactive(state) == "extract_response"
 
     def test_无messages路由到extract_response(self):
         """messages 为空时应路由到 extract_response。"""
         state = create_initial_state("测试")
         state["messages"] = []
-        state["reactive_tool_call_count"] = 0
-        state["max_reactive_tool_calls"] = 5
         assert route_after_reactive(state) == "extract_response"
 
 
@@ -104,7 +89,7 @@ class TestRouteAfterObserve:
         """构造基础 observe 后状态。"""
         state = create_initial_state("分析查询")
         state["plan"] = [
-            {"step_index": 1, "description": "步骤1", "status": "running"},
+            {"step_index": 1, "description": "步骤1", "status": "in_progress"},
             {"step_index": 2, "description": "步骤2", "status": "pending"},
         ]
         state["current_step_index"] = 0

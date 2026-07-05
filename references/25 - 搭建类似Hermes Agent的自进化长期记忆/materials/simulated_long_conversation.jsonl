@@ -1,0 +1,36 @@
+{"event_id":"evt_a01","project_id":"travel-agent","session_id":"s_0614_beijing","turn":1,"role":"user","kind":"message","text":"帮我规划一个北京三日亲子游，6月20号出发，带着5岁的女儿。最后要给我一份能真正走得通的行程。"}
+{"event_id":"evt_a02","project_id":"travel-agent","session_id":"s_0614_beijing","turn":2,"role":"assistant","kind":"message","text":"好的。先确认两件事：你们住在哪个区域？有没有一定要去的景点？"}
+{"event_id":"evt_a03","project_id":"travel-agent","session_id":"s_0614_beijing","turn":3,"role":"user","kind":"message","text":"住王府井附近。故宫肯定要去，孩子一直念叨环球影城。对了，北京最近热不热？"}
+{"event_id":"evt_a04","project_id":"travel-agent","session_id":"s_0614_beijing","turn":4,"role":"assistant","kind":"message","text":"六月下旬白天气温30度上下，早晚舒服一些，记得给孩子备防晒和水壶。景点方面我来排一版初稿。"}
+{"event_id":"evt_a05","project_id":"travel-agent","session_id":"s_0614_beijing","turn":5,"role":"user","kind":"message","text":"孩子才5岁，走不了太多路，下午两点到四点最好能回酒店午睡。"}
+{"event_id":"evt_a06","project_id":"travel-agent","session_id":"s_0614_beijing","turn":6,"role":"assistant","kind":"message","text":"记下了。初版行程：第一天上午天安门广场，下午国家博物馆；第二天上午故宫，下午环球影城；第三天上午景山公园，下午王府井步行街。"}
+{"event_id":"evt_a07","project_id":"travel-agent","session_id":"s_0614_beijing","turn":7,"role":"tool","kind":"tool_result","tool":"route_checker","status":"failed","text":"路线检查失败：第二天下午从故宫（东城区）到环球影城（通州区）单程通勤约1.5小时，加上入园排队，对5岁儿童的下午时段不可执行。"}
+{"event_id":"evt_a08","project_id":"travel-agent","session_id":"s_0614_beijing","turn":8,"role":"assistant","kind":"message","text":"检查没通过，问题出在把跨区的大项目塞进了半天。调整思路：同区域景点聚合到同一天，环球影城这种远距离大项单独占一整天。"}
+{"event_id":"evt_a09","project_id":"travel-agent","session_id":"s_0614_beijing","turn":9,"role":"user","kind":"message","text":"对，另外我不想要那种网红打卡式的安排，一天别塞太满。"}
+{"event_id":"evt_a10","project_id":"travel-agent","session_id":"s_0614_beijing","turn":10,"role":"assistant","kind":"message","text":"修改后行程 v2：第一天 天安门-故宫-景山，同区域步行可达，下午两点回酒店午睡；第二天 环球影城一整天；第三天上午自然博物馆，下午机动。"}
+{"event_id":"evt_a11","project_id":"travel-agent","session_id":"s_0614_beijing","turn":11,"role":"tool","kind":"tool_result","tool":"route_checker","status":"passed","text":"修正后路线检查通过：三天行程内跨区移动仅一次，每日步行量与午休窗口符合学龄前儿童条件。"}
+{"event_id":"evt_a12","project_id":"travel-agent","session_id":"s_0614_beijing","turn":12,"role":"user","kind":"message","text":"这版可以。以后给我这种结果的时候，把检查结论一起附上，我不想只看一段漂亮介绍。"}
+{"event_id":"evt_a13","project_id":"travel-agent","session_id":"s_0614_beijing","turn":13,"role":"assistant","kind":"message","text":"好的，以后输出行程会附上路线检查的结论和依据。"}
+{"event_id":"evt_a14","project_id":"travel-agent","session_id":"s_0614_beijing","turn":14,"role":"user","kind":"message","text":"顺便问一下，故宫门票是不是要提前预约？"}
+{"event_id":"evt_a15","project_id":"travel-agent","session_id":"s_0614_beijing","turn":15,"role":"assistant","kind":"message","text":"是的，故宫需要提前在官方渠道实名预约，暑期旺季建议提前七天蹲点，当天基本没票。"}
+{"event_id":"evt_a16","project_id":"travel-agent","session_id":"s_0614_beijing","turn":16,"role":"user","kind":"message","text":"好，第一天上午就定故宫，票我今晚约。"}
+{"event_id":"evt_a17","project_id":"travel-agent","session_id":"s_0614_beijing","turn":17,"role":"assistant","kind":"message","text":"已调整：第一天上午故宫、下午景山，午休窗口保留。最终版行程和检查结论已经打包给你。"}
+{"event_id":"evt_a18","project_id":"travel-agent","session_id":"s_0614_beijing","turn":18,"role":"user","kind":"message","text":"今天先到这，谢谢。"}
+{"event_id":"evt_b01","project_id":"travel-agent","session_id":"s_0621_xian","turn":1,"role":"user","kind":"message","text":"上次北京的行程走得很顺利。这周末想带娃去西安两天，还是那个原则，别太累。"}
+{"event_id":"evt_b02","project_id":"travel-agent","session_id":"s_0621_xian","turn":2,"role":"assistant","kind":"message","text":"好的。初版：第一天上午兵马俑，下午回城逛回民街和钟楼；第二天上午陕西历史博物馆，下午大雁塔。"}
+{"event_id":"evt_b03","project_id":"travel-agent","session_id":"s_0621_xian","turn":3,"role":"tool","kind":"tool_result","tool":"route_checker","status":"failed","text":"路线检查失败：兵马俑位于临潼区，距市区约40公里，往返加游览至少6小时；下午回城遇高峰，第一天行程超时，不可执行。"}
+{"event_id":"evt_b04","project_id":"travel-agent","session_id":"s_0621_xian","turn":4,"role":"assistant","kind":"message","text":"又是同一类问题：远距离大项被排进了半天。调整：兵马俑单独占一整天，市区景点聚合到第二天。"}
+{"event_id":"evt_b05","project_id":"travel-agent","session_id":"s_0621_xian","turn":5,"role":"user","kind":"message","text":"对了，娃上午精神最好，重要的景点尽量排上午。"}
+{"event_id":"evt_b06","project_id":"travel-agent","session_id":"s_0621_xian","turn":6,"role":"assistant","kind":"message","text":"收到。v2：第一天兵马俑一整天，上午看核心俑坑；第二天上午陕西历史博物馆，下午大雁塔北广场喷泉，晚饭回民街。"}
+{"event_id":"evt_b07","project_id":"travel-agent","session_id":"s_0621_xian","turn":7,"role":"tool","kind":"tool_result","tool":"route_checker","status":"passed","text":"修正后路线检查通过：两天行程跨区移动一次，每日行程量符合学龄前儿童条件，午休窗口已预留。"}
+{"event_id":"evt_b08","project_id":"travel-agent","session_id":"s_0621_xian","turn":8,"role":"user","kind":"message","text":"陕历博的票好约吗？"}
+{"event_id":"evt_b09","project_id":"travel-agent","session_id":"s_0621_xian","turn":9,"role":"assistant","kind":"message","text":"陕西历史博物馆免费不免票，旺季名额紧张，建议提前五天在官方公众号预约。"}
+{"event_id":"evt_b10","project_id":"travel-agent","session_id":"s_0621_xian","turn":10,"role":"user","kind":"message","text":"行。对了你们这个报销流程……哦不对，说错了，那是工作群的事。"}
+{"event_id":"evt_b11","project_id":"travel-agent","session_id":"s_0621_xian","turn":11,"role":"assistant","kind":"message","text":"没关系。西安这边还有什么要调整的吗？"}
+{"event_id":"evt_b12","project_id":"travel-agent","session_id":"s_0621_xian","turn":12,"role":"user","kind":"message","text":"这次也记得把检查结论附上。"}
+{"event_id":"evt_b13","project_id":"travel-agent","session_id":"s_0621_xian","turn":13,"role":"assistant","kind":"message","text":"附上了：route_checker 通过，两天行程跨区一次，午休窗口已预留，重点景点都在上午。"}
+{"event_id":"evt_b14","project_id":"travel-agent","session_id":"s_0621_xian","turn":14,"role":"user","kind":"message","text":"完美，就这么定。"}
+{"event_id":"evt_c01","project_id":"expense-agent","session_id":"s_0622_expense","turn":1,"role":"user","kind":"message","text":"帮我看看这张出租车发票能不能走差旅报销，金额86块。"}
+{"event_id":"evt_c02","project_id":"expense-agent","session_id":"s_0622_expense","turn":2,"role":"assistant","kind":"message","text":"可以先确认两点：是否在出差期间产生、发票抬头是否为公司全称。这两条满足就能提交。"}
+{"event_id":"evt_c03","project_id":"expense-agent","session_id":"s_0622_expense","turn":3,"role":"user","kind":"message","text":"是出差期间的，抬头也对。以后这种小额交通票，你直接按新版差旅制度帮我预审，别每次都问。"}
+{"event_id":"evt_c04","project_id":"expense-agent","session_id":"s_0622_expense","turn":4,"role":"assistant","kind":"message","text":"好的，以后小额交通票默认按新版差旅制度先做预审，再给你确认结果。"}

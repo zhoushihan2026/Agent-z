@@ -137,8 +137,8 @@ class Settings:
 
     @property
     def BROWSER_HEADLESS(self) -> bool:
-        """浏览器无头模式（phase2 新增）。"""
-        return os.getenv("BROWSER_HEADLESS", "true").lower() != "false"
+        """浏览器无头模式（phase2 新增）。默认 false，便于页面演示。"""
+        return os.getenv("BROWSER_HEADLESS", "false").lower() == "true"
 
     @property
     def BROWSER_TIMEOUT(self) -> int:
@@ -157,6 +157,21 @@ class Settings:
         if not raw:
             return []
         return [d.strip() for d in raw.split(",")]
+
+    @property
+    def BROWSER_KEEP_SESSION(self) -> bool:
+        """是否在多次工具调用间复用同一个浏览器会话。"""
+        return os.getenv("BROWSER_KEEP_SESSION", "true").lower() != "false"
+
+    @property
+    def BROWSER_VIEWPORT_WIDTH(self) -> int:
+        """浏览器视口宽度。"""
+        return int(os.getenv("BROWSER_VIEWPORT_WIDTH", "1440"))
+
+    @property
+    def BROWSER_VIEWPORT_HEIGHT(self) -> int:
+        """浏览器视口高度。"""
+        return int(os.getenv("BROWSER_VIEWPORT_HEIGHT", "900"))
 
     @property
     def CORS_ORIGINS(self) -> List[str]:

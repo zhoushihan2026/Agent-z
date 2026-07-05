@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Agent chat 路由。
 
 对应 spec 2.5.2 节：POST /api/agent/chat SSE 流式接口。
@@ -52,6 +52,64 @@ class ChatRequest(BaseModel):
         return v
 
 
+def _rebuild_reactive_trace(messages: list) -> list:
+    """从 messages 中重建 reactive 路径的工具执行轨迹。
+
+    reactive 路径不经过 think/act/observe 节点，没有 think_history/act_history/observe_history，
+    但前端需要展示 reactive 的思考过程（哪个工具、参数、返回结果）。
+    从 messages 中按序提取 AIMessage(tool_calls) + ToolMessage 对来重建轨迹。
+
+    参数:
+        messages: LangGraph messages 列表
+
+    返回:
+        reactive_trace 列表，每个元素是 {"think": ..., "tool": ..., "args": ..., "observe": ..., "success": ...}
+    """
+    traces = []
+    i = 0
+    while i < len(messages):
+        msg = messages[i]
+        # 只处理有 tool_calls 的 AIMessage
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            # 可能一条 AIMessage 有多个 tool_calls
+            for tc in msg.tool_calls:
+                tool_name = tc.get("name", "")
+                tool_args = tc.get("args", {})
+                tool_call_id = tc.get("id", "")
+                # 提取 AI 的思考内容（如有）
+                think_content = ""
+                if hasattr(msg, "content") and msg.content:
+                    think_content = str(msg.content)[:500]
+
+                # 在后续消息中查找对应的 ToolMessage
+                observe_content = ""
+                success = True
+                for j in range(i + 1, len(messages)):
+                    tm = messages[j]
+                    if (
+                        hasattr(tm, "tool_call_id")
+                        and tm.tool_call_id == tool_call_id
+                    ):
+                        observe_content = str(tm.content)[:800]
+                        # 检查是否失败
+                        for flag in ("Error", "失败", "错误", "不存在"):
+                            if flag in observe_content:
+                                success = False
+                                break
+                        break
+
+                traces.append({
+                    "think": think_content,
+                    "tool": tool_name,
+                    "args": tool_args,
+                    "tool_call_id": tool_call_id,
+                    "observe": f"工具 {tool_name} 返回：{observe_content}" if observe_content else "",
+                    "success": success,
+                })
+        i += 1
+    return traces
+
+
 def _build_agent_meta(state: dict, duration_ms: int) -> dict:
     """将 LangGraph 状态转换为前端 AgentMessage 结构，用于持久化 meta。
 
@@ -68,9 +126,17 @@ def _build_agent_meta(state: dict, duration_ms: int) -> dict:
     observe_history = state.get("observe_history", []) or []
     current_step_index = state.get("current_step_index", 0)
     is_finished = state.get("is_finished", False)
+    processing_mode = state.get("processing_mode")
+    messages = state.get("messages", []) or []
+
+    # reactive 路径没有 think_history/act_history/observe_history，
+    # 需要从 messages 重建工具执行轨迹
+    reactive_trace = state.get("reactive_trace", []) or []
+    if processing_mode == "reactive" and not think_history and not act_history and not reactive_trace:
+        reactive_trace = _rebuild_reactive_trace(messages)
 
     react_steps = []
-    max_step = max(len(think_history), len(act_history), len(observe_history))
+    max_step = max(len(think_history), len(act_history), len(observe_history), len(reactive_trace))
     for i in range(max_step):
         step_idx = i + 1
         step = {
@@ -81,22 +147,46 @@ def _build_agent_meta(state: dict, duration_ms: int) -> dict:
             act = act_history[i]
             step["actTool"] = act.get("tool_name", "")
             step["actArgs"] = act.get("tool_args", {})
+            step["toolCallId"] = act.get("tool_call_id", "")
         if i < len(observe_history):
             observe = observe_history[i]
-            # observe_history 存储的是字符串，可能包含成功标记
             success = not str(observe).startswith("错误")
             step["observeContent"] = observe
             step["observeSuccess"] = success
+        if i < len(reactive_trace):
+            trace = reactive_trace[i]
+            step["thinkContent"] = trace.get("think", step.get("thinkContent", ""))
+            if trace.get("tool"):
+                step["actTool"] = trace.get("tool")
+                step["actArgs"] = trace.get("args", {})
+                step["toolCallId"] = trace.get("tool_call_id", "")
+            if trace.get("observe"):
+                step["observeContent"] = trace.get("observe")
+                step["observeSuccess"] = trace.get("success", True)
         react_steps.append(step)
 
-    # 根据 current_step_index 和 is_finished 推导 plan 步骤状态。
-    # 注意：is_finished 不自动将全部步骤标为 completed，
-    # 只以 current_step_index 为界区分已完成/未完成/已跳过。
-    def _derive_plan_status(idx: int) -> str:
+    # 优先使用 plan 中已有的 status（observe_node 已正确设置 completed/in_progress/pending/skipped），
+    # 仅在 plan 步骤仍为旧状态名（done/running）时做兼容转换
+    def _normalize_plan_status(p: dict, idx: int) -> str:
+        status = p.get("status", "")
+        if status == "completed":
+            return "completed"
+        if status == "in_progress":
+            return "in_progress"
+        if status == "pending":
+            return "pending"
+        if status == "skipped":
+            return "pending"  # skipped 步骤前端显示为 pending
+        # 兼容旧状态名
+        if status == "done":
+            return "completed"
+        if status == "running":
+            return "in_progress"
+        # plan 中无 status（plan_node 输出后未经过 observe_node 时的初始状态）
         if idx < current_step_index:
-            return "completed"   # 确实已推进过的步骤
+            return "completed"
         if is_finished:
-            return "skipped"     # agent 提前终止，剩余步骤未执行
+            return "pending"
         if idx == current_step_index:
             return "in_progress"
         return "pending"
@@ -108,7 +198,7 @@ def _build_agent_meta(state: dict, duration_ms: int) -> dict:
             {
                 "step_index": p.get("step_index", idx + 1),
                 "description": p.get("description", ""),
-                "status": _derive_plan_status(idx),
+                "status": _normalize_plan_status(p, idx),
                 "tool_used": p.get("tool_used"),
             }
             for idx, p in enumerate(plan)
@@ -412,7 +502,20 @@ def run_agent_stream(message: str, session_id: str, graph, session_manager, repo
                         if not isinstance(state_update, dict):
                             continue
 
+                        # 更新前记录当前步骤索引，用于 think/act/observe 的 step 对齐
+                        pre_step_index = final_state.get("current_step_index", 0)
                         final_state.update(state_update)
+
+                        # plan 状态变化时主动同步到前端，保证进度条与实际一致
+                        if state_update.get("plan"):
+                            yield format_sse(plan_event(
+                                session_id=session_id,
+                                plan=state_update["plan"],
+                            ))
+
+                        # deliberative 路径的 think/act/observe 统一使用当前步骤索引 + 1，
+                        # 避免失败重试时 step 与 plan 错位
+                        deliberative_step = pre_step_index + 1
 
                         if node_name == "assess":
                             processing_mode = state_update.get("processing_mode", "deliberative")
@@ -448,53 +551,85 @@ def run_agent_stream(message: str, session_id: str, graph, session_manager, repo
                                 content=state_update.get("_reactive_status", "正在生成快速回答"),
                             ))
                         elif node_name == "tools":
-                            tool_call = state_update.get("current_tool_call") or {}
-                            if tool_call:
-                                yield format_sse(act_event(
-                                    session_id=session_id,
-                                    step=1,
-                                    tool=tool_call.get("tool_name", ""),
-                                    args=tool_call.get("tool_args", {}),
-                                ))
-                            observation = state_update.get("_reactive_tool_observation")
-                            if observation or tool_call:
+                            # reactive 路径一次可能执行多个 tool_call，必须逐对推送 act/observe，
+                            # 避免 Act 只显示最后一个工具而 Observe 显示多个结果导致不对应。
+                            tool_calls_list = state_update.get("current_tool_calls") or []
+                            if not tool_calls_list:
+                                single = state_update.get("current_tool_call") or {}
+                                if single:
+                                    tool_calls_list = [single]
+
+                            for tc in tool_calls_list:
+                                tool_name = tc.get("tool_name", "")
+                                tool_args = tc.get("tool_args", {})
+                                tool_result = tc.get("tool_result", "")
+                                tool_success = tc.get("success", False)
+                                tool_call_id = tc.get("tool_call_id", "")
+
+                                if tool_name:
+                                    yield format_sse(act_event(
+                                        session_id=session_id,
+                                        step=1,
+                                        tool=tool_name,
+                                        args=tool_args,
+                                        tool_call_id=tool_call_id,
+                                    ))
+                                    if tool_name == "browser_use":
+                                        yield format_sse(browser_act_event(
+                                            session_id=session_id,
+                                            action=tool_args.get("action", ""),
+                                            result=tool_result,
+                                        ))
+
+                                observation_text = (
+                                    f"工具 {tool_name} 返回：{tool_result[:500]}"
+                                    if len(tool_result) > 500
+                                    else f"工具 {tool_name} 返回：{tool_result}"
+                                )
                                 yield format_sse(observe_event(
                                     session_id=session_id,
                                     step=1,
-                                    content=observation or str(tool_call.get("tool_result", "")),
-                                    success=tool_call.get("success", True),
+                                    content=observation_text,
+                                    success=tool_success,
+                                    tool_call_id=tool_call_id,
                                 ))
                         elif node_name == "think":
-                            step = len(state_update.get("think_history", []))
                             yield format_sse(think_event(
                                 session_id=session_id,
-                                step=step,
+                                step=deliberative_step,
                                 content=state_update.get("current_thought", ""),
                             ))
                         elif node_name == "act":
-                            step = len(state_update.get("act_history", []))
                             tool_call = state_update.get("current_tool_call") or {}
-                            yield format_sse(act_event(
-                                session_id=session_id,
-                                step=step,
-                                tool=tool_call.get("tool_name", ""),
-                                args=tool_call.get("tool_args", {}),
-                            ))
-                            if tool_call.get("tool_name") == "browser_use":
-                                yield format_sse(browser_act_event(
+                            tool_name = tool_call.get("tool_name", "")
+                            # 无工具调用时不推送 act 事件，避免前端出现空工具卡片
+                            if tool_name:
+                                yield format_sse(act_event(
                                     session_id=session_id,
-                                    action=tool_call.get("tool_args", {}).get("action", ""),
-                                    result=tool_call.get("tool_result", ""),
+                                    step=deliberative_step,
+                                    tool=tool_name,
+                                    args=tool_call.get("tool_args", {}),
+                                    tool_call_id=tool_call.get("tool_call_id", ""),
                                 ))
+                                if tool_name == "browser_use":
+                                    yield format_sse(browser_act_event(
+                                        session_id=session_id,
+                                        action=tool_call.get("tool_args", {}).get("action", ""),
+                                        result=tool_call.get("tool_result", ""),
+                                    ))
                         elif node_name == "observe":
-                            step = len(state_update.get("observe_history", []))
                             tool_call = state_update.get("current_tool_call") or {}
-                            yield format_sse(observe_event(
-                                session_id=session_id,
-                                step=step,
-                                content=state_update.get("current_observation", ""),
-                                success=tool_call.get("success", True),
-                            ))
+                            tool_name = tool_call.get("tool_name", "")
+                            observe_content = state_update.get("current_observation", "")
+                            # 无工具调用且无观察内容时不推送 observe 事件
+                            if tool_name or observe_content:
+                                yield format_sse(observe_event(
+                                    session_id=session_id,
+                                    step=deliberative_step,
+                                    content=observe_content,
+                                    success=tool_call.get("success", True),
+                                    tool_call_id=tool_call.get("tool_call_id", ""),
+                                ))
                         elif node_name == "synthesize":
                             yield format_sse(synthesize_event(
                                 session_id=session_id,

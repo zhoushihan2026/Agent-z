@@ -21,7 +21,7 @@ def _setup_act_state(tool_calls=None):
     """构造一个带 AIMessage(tool_calls) 的状态。"""
     state = create_initial_state("分析查询")
     state["plan"] = [
-        {"step_index": 1, "description": "检索数据", "status": "running", "tool_used": "rag_search"},
+        {"step_index": 1, "description": "检索数据", "status": "in_progress", "tool_used": "rag_search"},
     ]
     state["current_step_index"] = 0
     state["react_loop_count"] = 1
@@ -104,6 +104,22 @@ class TestActNodeNoToolCalls:
         # current_tool_call 应为空或 None
         assert not result.get("current_tool_call") or result["current_tool_call"].get("tool_name") is None
 
+    def test_无tool_calls时act_history追加空记录(self):
+        """当无 tool_calls 时，act_history 应追加一条 tool_name=None 的空记录，
+        便于 route_after_observe 检测"连续无工具调用"避免死循环。"""
+        state = _setup_act_state(tool_calls=None)
+        state["messages"] = [
+            HumanMessage(content="分析查询"),
+            AIMessage(content="无需调用工具"),
+        ]
+        state["act_history"] = []
+
+        with patch("agent.nodes.act.get_tool_by_name"):
+            result = act_node(state)
+
+        assert len(result["act_history"]) == 1
+        assert result["act_history"][0]["tool_name"] is None
+
 
 class TestActNodeError:
     """测试工具执行异常场景。"""
@@ -121,6 +137,20 @@ class TestActNodeError:
 
         assert result["current_tool_call"]["success"] is False
         assert "工具执行失败" in result["current_tool_call"]["tool_result"]
+
+    def test_工具返回失败状态文本时标记失败(self):
+        """工具返回标准失败文本时，act_node 应识别 success=False。"""
+        tool_calls = [{"name": "browser_use", "args": {"action": "go_to_url", "url": "https://example.com"}, "id": "call_1"}]
+        state = _setup_act_state(tool_calls)
+
+        mock_tool = MagicMock()
+        mock_tool.invoke.return_value = "状态：失败\n错误：BROWSER_UNAVAILABLE - 浏览器工具不可用"
+
+        with patch("agent.nodes.act.get_tool_by_name", return_value=mock_tool):
+            result = act_node(state)
+
+        assert result["current_tool_call"]["success"] is False
+        assert "BROWSER_UNAVAILABLE" in result["current_tool_call"]["tool_result"]
 
     def test_工具不存在时标记失败(self):
         """工具名不存在时，current_tool_call 应标记 success=False。"""

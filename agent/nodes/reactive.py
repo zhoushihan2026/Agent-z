@@ -28,9 +28,16 @@ def reactive_agent(state: dict) -> dict:
     user_query = state["user_query"]
     messages = list(state.get("messages", []))
     reactive_tool_call_count = state.get("reactive_tool_call_count", 0)
-    max_reactive_tool_calls = state.get("max_reactive_tool_calls", 5)
 
-    system_prompt = REACTIVE_SYSTEM_PROMPT.format(max_reactive_tool_calls=max_reactive_tool_calls)
+    # 注入当前日期和时间上下文
+    from datetime import datetime
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    time_context = state.get("time_context") or current_date
+
+    system_prompt = REACTIVE_SYSTEM_PROMPT.format(
+        current_date=current_date,
+        time_context=time_context,
+    )
 
     try:
         llm = get_llm()

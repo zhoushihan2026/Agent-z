@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial, sans-serif">
+<title>Workspace 主存储直接生成任务上下文包</title>
+<rect width="100%" height="100%" fill="#FFFFFF"/>
+<text x="600" y="46" font-size="28" font-weight="700" fill="#253858" text-anchor="middle">基础召回：主存储一份，任务上下文一份</text>
+
+<!-- workspace -->
+<rect x="80" y="100" width="460" height="270" rx="18" fill="#EEF4FF" stroke="#1F6FEB" stroke-width="2.5"/>
+<text x="310" y="140" font-size="21" font-weight="800" fill="#1F6FEB" text-anchor="middle">Workspace · 主存储（事实来源）</text>
+<text x="112" y="180" font-size="15" fill="#101828" text-anchor="start">· record：内容 + collection + kind</text>
+<text x="112" y="210" font-size="15" fill="#101828" text-anchor="start">· scope / source / meta：归属、来源、置信度</text>
+<text x="112" y="240" font-size="15" fill="#101828" text-anchor="start">· link：证据链接（rule → episode → raw）</text>
+<text x="112" y="270" font-size="15" fill="#101828" text-anchor="start">· checkpoint：整理进度</text>
+<text x="112" y="300" font-size="15" fill="#101828" text-anchor="start">· 文本检索（search）与任务上下文打包</text>
+<text x="112" y="340" font-size="14" font-weight="600" fill="#1F6FEB" text-anchor="start">丢了它，记忆的可追溯性就没了</text>
+
+<!-- recall request -->
+<rect x="660" y="100" width="460" height="270" rx="18" fill="#F5FAF6" stroke="#2E7D32" stroke-width="2.5"/>
+<text x="890" y="140" font-size="21" font-weight="800" fill="#2E7D32" text-anchor="middle">Recall Request · 本次任务参数</text>
+<text x="692" y="180" font-size="15" fill="#101828" text-anchor="start">· goal：当前任务目标</text>
+<text x="692" y="210" font-size="15" fill="#101828" text-anchor="start">· scope：project / user / session 边界</text>
+<text x="692" y="240" font-size="15" fill="#101828" text-anchor="start">· context limit：总量和单条上限</text>
+<text x="692" y="270" font-size="15" fill="#101828" text-anchor="start">· profile：召回策略</text>
+<text x="692" y="340" font-size="14" font-weight="600" fill="#2E7D32" text-anchor="start">参数决定"哪些记忆能进当前上下文"</text>
+
+<!-- request reads workspace -->
+<line x1="650" y1="235" x2="550" y2="235" stroke="#98A2B3" stroke-width="2.5" stroke-dasharray="8,6"/>
+<polygon points="540,235 554,228 554,242" fill="#98A2B3"/>
+<text x="600" y="220" font-size="14" fill="#667085" text-anchor="middle">按参数读取</text>
+
+<!-- two result flows -->
+<line x1="310" y1="370" x2="470" y2="452" stroke="#1F6FEB" stroke-width="3"/>
+<polygon points="478,456 462,456 468,442" fill="#1F6FEB"/>
+<text x="290" y="424" font-size="15" font-weight="600" fill="#1F6FEB" text-anchor="start">候选记录（带来源）</text>
+
+<line x1="890" y1="370" x2="730" y2="452" stroke="#2E7D32" stroke-width="3"/>
+<polygon points="722,456 738,456 732,442" fill="#2E7D32"/>
+<text x="762" y="424" font-size="15" font-weight="600" fill="#2E7D32" text-anchor="start">goal / scope / limit</text>
+
+<!-- context package -->
+<rect x="420" y="456" width="360" height="104" rx="16" fill="#253858"/>
+<text x="600" y="496" font-size="19" font-weight="800" fill="#FFFFFF" text-anchor="middle">Workspace.build_context(...)</text>
+<text x="600" y="524" font-size="14" fill="#D8E0EE" text-anchor="middle">按 scope 过滤，按上下文上限打包，每条保留来源</text>
+<text x="600" y="546" font-size="14" fill="#9FB0CC" text-anchor="middle">diagnostics / omitted 可审计</text>
+
+<text x="600" y="600" font-size="15" fill="#667085" text-anchor="middle">先用文件系统主存储跑通可追溯召回；向量库只做后续可重建的扩展副本</text>
+</svg>

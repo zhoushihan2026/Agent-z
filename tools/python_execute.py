@@ -152,9 +152,48 @@ def _rewrite_figure_paths(text: str) -> str:
     return text
 
 
+# 匹配简单赋值语句的正则（如 x = 1, result = {...}, growth_rate = ...）
+_ASSIGN_PATTERN = re.compile(
+    r"^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*", re.MULTILINE
+)
+
+
+def _extract_last_assigned_vars(code: str, max_vars: int = 5) -> list:
+    """从代码中提取最后赋值的变量名。
+
+    用于在 stdout 为空时自动打印这些变量的值，确保计算结果不丢失。
+
+    参数:
+        code: Python 代码字符串
+        max_vars: 最多提取的变量数量
+
+    返回:
+        变量名列表（按出现顺序，取最后 max_vars 个）
+    """
+    # 过滤掉常见的非数据变量名
+    _SKIP_NAMES = {
+        "fig", "ax", "ax1", "ax2", "plt", "rcParams", "fig_id",
+        "save_path", "abs_fname", "font_candidates", "available",
+    }
+    matches = _ASSIGN_PATTERN.findall(code)
+    # 去重并保留顺序，跳过内部变量
+    seen = set()
+    result = []
+    for name in reversed(matches):
+        if name not in seen and name not in _SKIP_NAMES and not name.startswith("_"):
+            result.append(name)
+            seen.add(name)
+            if len(result) >= max_vars:
+                break
+    return list(reversed(result))
+
+
 @tool
 def python_execute(code: str) -> str:
     """执行 Python 代码工具，在独立进程中运行，捕获输出和错误。
+
+    自动在代码末尾注入变量检查逻辑：如果代码执行完毕但 stdout 为空，
+    会自动检查最后赋值的变量并打印其值，确保计算结果不丢失。
 
     Args:
         code: 要执行的 Python 代码字符串
@@ -195,4 +234,31 @@ def python_execute(code: str) -> str:
         output += f"\n[stderr]\n{stderr}" if output else f"[stderr]\n{stderr}"
 
     output = _rewrite_figure_paths(output)
-    return output if output else "代码执行完成（无输出）。"
+
+    # 如果 stdout 为空，尝试自动提取最后赋值的变量并打印
+    if not output.strip():
+        # 解析代码中最后赋值的变量名，尝试在子进程中获取其值
+        var_names = _extract_last_assigned_vars(code)
+        if var_names:
+            # 构造检查代码：打印这些变量的值
+            inspect_code = code + "\n"
+            for vname in var_names:
+                inspect_code += f"\nprint('{vname} =', repr({vname}))"
+            queue2: Queue = Queue()
+            proc2 = Process(target=_execute_code, args=(inspect_code, queue2))
+            proc2.start()
+            proc2.join(timeout=timeout)
+            if not proc2.is_alive():
+                try:
+                    result2 = queue2.get_nowait()
+                    stdout2 = result2.get("stdout", "")
+                    if stdout2.strip() and not result2.get("error"):
+                        output = stdout2
+                        output = _rewrite_figure_paths(output)
+                except Exception:
+                    pass
+            else:
+                proc2.terminate()
+                proc2.join(timeout=2)
+
+    return output if output.strip() else "代码执行完成（无输出）。"

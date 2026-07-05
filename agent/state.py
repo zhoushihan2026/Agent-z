@@ -11,6 +11,7 @@ from langgraph.graph.message import add_messages
 
 class ToolCallInfo(TypedDict):
     """记录单次工具调用的名称、参数、结果、是否成功。"""
+    tool_call_id: str
     tool_name: str
     tool_args: Dict
     tool_result: str
@@ -33,6 +34,7 @@ class AgentState(TypedDict):
     # 意图识别
     query_type: Optional[str]  # emergency / informational / analytical
     processing_mode: Optional[str]  # reactive / deliberative
+    time_context: Optional[str]  # 解析后的时间上下文（YYYY-MM-DD 或 null）
 
     # 消息历史（用于工具调用）
     messages: Annotated[list, add_messages]
@@ -87,6 +89,7 @@ def create_initial_state(user_query: str) -> dict:
         # 意图识别
         "query_type": None,
         "processing_mode": None,
+        "time_context": None,
 
         # 消息历史
         "messages": [HumanMessage(content=user_query)],

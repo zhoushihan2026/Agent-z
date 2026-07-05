@@ -136,14 +136,33 @@ class TestBrowserUseErrorHandling:
         content = result if isinstance(result, str) else str(result)
         assert "缺少" in content or "错误" in content or "url" in content.lower()
 
-    def test_browser未安装返回错误(self):
+    def test_browser未安装返回错误(self, monkeypatch):
         """browser-use 未安装时返回明确错误信息。"""
         from tools.browser_use import browser_use
+        monkeypatch.setattr("tools.browser_use._ensure_browser", lambda: False)
         result = browser_use.invoke({
             "action": "go_to_url",
             "url": "https://example.com",
         })
         content = result if isinstance(result, str) else str(result)
-        # browser-use 未安装时应返回安装提示或错误
         assert content is not None
         assert len(content) > 0
+        assert "BROWSER_UNAVAILABLE" in content or "状态：失败" in content
+        assert "playwright install chromium" in content or "web_search" in content
+
+    def test_open别名自动纠正为go_to_url(self, monkeypatch):
+        """open 动作应自动纠正为 go_to_url，兼容模型误用。"""
+        from tools.browser_use import browser_use
+        monkeypatch.setattr("tools.browser_use._ensure_browser", lambda: False)
+        result = browser_use.invoke({
+            "action": "open",
+            "url": "https://example.com",
+        })
+        content = result if isinstance(result, str) else str(result)
+        assert "BROWSER_UNAVAILABLE" in content or "状态：失败" in content
+
+    def test_描述中强调使用go_to_url而不是open(self):
+        """工具描述应明确要求用 go_to_url 打开网页。"""
+        from tools.browser_use import browser_use
+        assert "go_to_url" in browser_use.description
+        assert "open" in browser_use.description

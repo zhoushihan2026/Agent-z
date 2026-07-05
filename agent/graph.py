@@ -121,8 +121,8 @@ def route_after_reactive(state: dict) -> Literal["tools", "extract_response"]:
     """reactive_agent 后的路由：判断是否继续调用工具。
 
     规则：
-    - LLM 输出含 tool_calls 且 reactive_tool_call_count < max_reactive_tool_calls → tools
-    - 否则（无 tool_calls，或已达上限强制收敛）→ extract_response
+    - LLM 输出含 tool_calls → tools（无调用次数上限，LLM 自行决定何时停止）
+    - 否则（无 tool_calls）→ extract_response
 
     参数:
         state: 当前 AgentState
@@ -131,12 +131,6 @@ def route_after_reactive(state: dict) -> Literal["tools", "extract_response"]:
         "tools" 或 "extract_response"
     """
     messages = state.get("messages", [])
-    reactive_tool_call_count = state.get("reactive_tool_call_count", 0)
-    max_reactive_tool_calls = state.get("max_reactive_tool_calls", 5)
-
-    # 已达上限，强制收敛
-    if reactive_tool_call_count >= max_reactive_tool_calls:
-        return "extract_response"
 
     # 检查最后一条 AIMessage 是否含 tool_calls
     if not messages or not isinstance(messages[-1], AIMessage):
@@ -218,7 +212,7 @@ def tool_executor(state: dict) -> dict:
     tool_calls = getattr(last_message, "tool_calls", None) or []
 
     new_messages = messages
-    last_tool_call_info = None
+    tool_call_infos = []
     observations = []
     for tool_call in tool_calls:
         tool_name = tool_call["name"]
@@ -237,18 +231,22 @@ def tool_executor(state: dict) -> dict:
                 content = f"工具执行失败: {e}"
                 success = False
 
-        last_tool_call_info = {
+        info = {
+            "tool_call_id": tool_call_id,
             "tool_name": tool_name,
             "tool_args": tool_args,
             "tool_result": content,
             "success": success,
         }
+        tool_call_infos.append(info)
         observations.append(f"工具 {tool_name} 返回：{content[:300]}")
         new_messages = new_messages + [ToolMessage(content=content, tool_call_id=tool_call_id)]
 
     result = {"messages": new_messages}
-    if last_tool_call_info:
-        result["current_tool_call"] = last_tool_call_info
+    if tool_call_infos:
+        # 保留最后一个用于兼容旧逻辑，同时提供完整列表供 SSE 逐对展示
+        result["current_tool_call"] = tool_call_infos[-1]
+        result["current_tool_calls"] = tool_call_infos
         result["_reactive_tool_observation"] = "\n".join(observations)
     return result
 

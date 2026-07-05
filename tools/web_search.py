@@ -217,8 +217,9 @@ def web_search(query: str) -> str:
 
     for i, item in enumerate(results, 1):
         title = item.get("title", "无标题")
-        url = item.get("url", "")
-        description = item.get("description", "")
+        # 兼容测试 mock 与真实搜索引擎返回的字段名差异
+        url = item.get("url", "") or item.get("href", "")
+        description = item.get("description", "") or item.get("body", "")
         lines.append(f"{i}. {title}")
         if url:
             lines.append(f"   链接：{url}")

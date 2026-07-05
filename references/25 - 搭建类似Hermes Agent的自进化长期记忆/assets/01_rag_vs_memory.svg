@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial, sans-serif">
+<title>RAG 只覆盖检索一步；记忆系统是四个动作的闭环</title>
+<defs>
+  <marker id="arrow-gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+    <path d="M0,0 L8,4 L0,8 Z" fill="#98A2B3"/>
+  </marker>
+</defs>
+<rect width="100%" height="100%" fill="#FFFFFF"/>
+<text x="600" y="46" font-size="28" font-weight="700" fill="#253858" text-anchor="middle">RAG 覆盖一步，记忆系统是四个动作的闭环</text>
+
+<!-- Left panel: RAG -->
+<rect x="60" y="86" width="480" height="420" rx="18" fill="#F5F7FA" stroke="#D0D5DD" stroke-width="2"/>
+<text x="300" y="128" font-size="22" font-weight="800" fill="#667085" text-anchor="middle">RAG：从资料里找相关片段</text>
+
+<rect x="130" y="166" width="340" height="64" rx="12" fill="#FFFFFF" stroke="#D0D5DD" stroke-width="2"/>
+<text x="300" y="196" font-size="18" font-weight="600" fill="#101828" text-anchor="middle">一批相对静态的资料</text>
+<text x="300" y="219" font-size="14" fill="#667085" text-anchor="middle">文档、知识库、FAQ</text>
+
+<line x1="300" y1="230" x2="300" y2="286" stroke="#667085" stroke-width="2.5"/>
+<polygon points="300,296 293,282 307,282" fill="#667085"/>
+<text x="318" y="266" font-size="15" fill="#667085" text-anchor="start">retrieval（检索）</text>
+
+<rect x="130" y="296" width="340" height="64" rx="12" fill="#EEF4FF" stroke="#1F6FEB" stroke-width="2"/>
+<text x="300" y="326" font-size="18" font-weight="600" fill="#101828" text-anchor="middle">相关片段进入上下文</text>
+<text x="300" y="349" font-size="14" fill="#667085" text-anchor="middle">回答当前这一个问题</text>
+
+<text x="300" y="420" font-size="15" fill="#667085" text-anchor="middle">资料本身不因任务结果而改变：</text>
+<text x="300" y="446" font-size="15" fill="#667085" text-anchor="middle">没有写入、没有修正、没有遗忘</text>
+
+<!-- Right panel: Memory system -->
+<rect x="600" y="86" width="540" height="420" rx="18" fill="#F5FAF6" stroke="#2E7D32" stroke-width="2"/>
+<text x="870" y="128" font-size="22" font-weight="800" fill="#2E7D32" text-anchor="middle">记忆系统：经历会被整理和改写</text>
+
+<!-- central store -->
+<rect x="760" y="256" width="220" height="80" rx="14" fill="#FFFFFF" stroke="#2E7D32" stroke-width="2.5"/>
+<text x="870" y="290" font-size="18" font-weight="700" fill="#101828" text-anchor="middle">分层记忆存储</text>
+<text x="870" y="315" font-size="14" fill="#667085" text-anchor="middle">raw / episodic / semantic</text>
+
+<!-- four actions around -->
+<rect x="640" y="160" width="200" height="58" rx="12" fill="#EEF4FF" stroke="#1F6FEB" stroke-width="2"/>
+<text x="740" y="184" font-size="16" font-weight="700" fill="#1F6FEB" text-anchor="middle">ingestion 写入</text>
+<text x="740" y="205" font-size="13" fill="#667085" text-anchor="middle">什么经历进入记忆</text>
+
+<rect x="900" y="160" width="200" height="58" rx="12" fill="#EEF4FF" stroke="#1F6FEB" stroke-width="2"/>
+<text x="1000" y="184" font-size="16" font-weight="700" fill="#1F6FEB" text-anchor="middle">revision 修正</text>
+<text x="1000" y="205" font-size="13" fill="#667085" text-anchor="middle">旧记忆怎样被改写</text>
+
+<rect x="640" y="376" width="200" height="58" rx="12" fill="#FFF4E5" stroke="#B45309" stroke-width="2"/>
+<text x="740" y="400" font-size="16" font-weight="700" fill="#B45309" text-anchor="middle">forgetting 遗忘</text>
+<text x="740" y="421" font-size="13" fill="#667085" text-anchor="middle">什么退出候选上下文</text>
+
+<rect x="900" y="376" width="200" height="58" rx="12" fill="#EDF7EE" stroke="#2E7D32" stroke-width="2"/>
+<text x="1000" y="400" font-size="16" font-weight="700" fill="#2E7D32" text-anchor="middle">retrieval 召回</text>
+<text x="1000" y="421" font-size="13" fill="#667085" text-anchor="middle">新任务取回哪些记忆</text>
+
+<!-- connectors -->
+<line x1="770" y1="218" x2="810" y2="256" stroke="#98A2B3" stroke-width="2" marker-end="url(#arrow-gray)"/>
+<line x1="970" y1="218" x2="930" y2="256" stroke="#98A2B3" stroke-width="2" marker-end="url(#arrow-gray)"/>
+<line x1="810" y1="336" x2="770" y2="376" stroke="#98A2B3" stroke-width="2" marker-end="url(#arrow-gray)"/>
+<line x1="930" y1="336" x2="970" y2="376" stroke="#98A2B3" stroke-width="2" marker-end="url(#arrow-gray)"/>
+
+<text x="870" y="476" font-size="15" fill="#2E7D32" text-anchor="middle" font-weight="600">RAG 只对应右下角一格；另外三个动作决定"记忆值不值得信"</text>
+</svg>

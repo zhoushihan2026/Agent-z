@@ -128,7 +128,7 @@ def think_event(session_id: str, step: int, content: str) -> Dict[str, Any]:
 
 
 def act_event(session_id: str, step: int, tool: str,
-              args: Dict[str, Any]) -> Dict[str, Any]:
+              args: Dict[str, Any], tool_call_id: str = "") -> Dict[str, Any]:
     """构造 act 事件（工具调用）。
 
     参数:
@@ -144,12 +144,13 @@ def act_event(session_id: str, step: int, tool: str,
         "step": step,
         "tool": tool,
         "args": args,
+        "tool_call_id": tool_call_id,
     }
     return _build_event("act", session_id, content)
 
 
 def observe_event(session_id: str, step: int, content: str,
-                  success: bool) -> Dict[str, Any]:
+                  success: bool, tool_call_id: str = "") -> Dict[str, Any]:
     """构造 observe 事件（观察结果）。
 
     参数:
@@ -165,6 +166,7 @@ def observe_event(session_id: str, step: int, content: str,
         "step": step,
         "content": content,
         "success": success,
+        "tool_call_id": tool_call_id,
     }
     return _build_event("observe", session_id, content_dict)
 

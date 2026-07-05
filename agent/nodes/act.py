@@ -37,10 +37,19 @@ def act_node(state: dict) -> dict:
     tool_calls = getattr(last_message, "tool_calls", None) or []
 
     if not tool_calls:
-        # 无 tool_calls 时不产生空的 act 记录，避免 "工具 None 执行失败" 消息
+        # 无 tool_calls 时记录一条空工具调用到 act_history，
+        # 便于 route_after_observe 检测"连续无工具调用"避免死循环
+        no_tool_entry = {
+            "tool_call_id": "",
+            "tool_name": None,
+            "tool_args": {},
+            "tool_result": "",
+            "success": False,
+        }
         return {
-            "act_history": act_history,
+            "act_history": act_history + [no_tool_entry],
             "messages": messages,
+            "current_tool_call": None,
         }
 
     # 执行第一个工具调用（deliberative 路径每轮 Think-Act 只执行一次工具）
@@ -55,6 +64,7 @@ def act_node(state: dict) -> dict:
         error_msg = f"工具 {tool_name} 不存在"
         logger.warning("act_node: %s", error_msg)
         current_tool_call = {
+            "tool_call_id": tool_call_id,
             "tool_name": tool_name,
             "tool_args": tool_args,
             "tool_result": error_msg,
@@ -64,17 +74,20 @@ def act_node(state: dict) -> dict:
     else:
         try:
             result = tool.invoke(tool_args)
+            result_text = str(result)
             current_tool_call = {
+                "tool_call_id": tool_call_id,
                 "tool_name": tool_name,
                 "tool_args": tool_args,
-                "tool_result": result,
-                "success": True,
+                "tool_result": result_text,
+                "success": bool(result_text) and "状态：失败" not in result_text,
             }
-            tool_message = ToolMessage(content=str(result), tool_call_id=tool_call_id)
+            tool_message = ToolMessage(content=result_text, tool_call_id=tool_call_id)
         except Exception as e:
             error_msg = f"工具执行失败: {e}"
             logger.warning("act_node: %s", error_msg)
             current_tool_call = {
+                "tool_call_id": tool_call_id,
                 "tool_name": tool_name,
                 "tool_args": tool_args,
                 "tool_result": error_msg,

@@ -1,0 +1,7 @@
+{
+  "project_id": "travel-agent",
+  "session_id": "s_0701_shanghai",
+  "turn": 8,
+  "event": "route_checker_failed",
+  "text": "路线检查失败：第一版把迪士尼和市区自然博物馆排在同一天，通勤时间过长，5岁儿童下午体力不够。需要回忆当前过程里已经出现过的同类失败和修正方式。"
+}

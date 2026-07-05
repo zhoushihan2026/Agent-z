@@ -20,9 +20,9 @@ def _setup_synthesize_state():
     """构造一个适合 synthesize_node 的状态。"""
     state = create_initial_state("分析中芯国际2024年财务表现")
     state["plan"] = [
-        {"step_index": 1, "description": "检索财报数据", "status": "done", "tool_used": "rag_search"},
-        {"step_index": 2, "description": "计算指标", "status": "done", "tool_used": "python_execute"},
-        {"step_index": 3, "description": "生成报告", "status": "done", "tool_used": "file_operator"},
+        {"step_index": 1, "description": "检索财报数据", "status": "completed", "tool_used": "rag_search"},
+        {"step_index": 2, "description": "计算指标", "status": "completed", "tool_used": "python_execute"},
+        {"step_index": 3, "description": "生成报告", "status": "completed", "tool_used": "file_operator"},
     ]
     state["think_history"] = ["需要检索财报数据", "数据已充分，开始计算指标"]
     state["act_history"] = [

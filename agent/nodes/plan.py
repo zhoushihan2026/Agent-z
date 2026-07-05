@@ -39,11 +39,12 @@ def plan_node(state: dict) -> dict:
             return {"plan": []}
 
         plan = []
-        for step in raw_plan:
+        for idx, step in enumerate(raw_plan):
             plan.append({
-                "step_index": step.get("step_index", 1),
+                "step_index": step.get("step_index", idx + 1),
                 "description": step.get("description", ""),
-                "status": "pending",
+                # 第一步直接标记为 in_progress，与前端 PlanPanel 的 in_progress 状态一致
+                "status": "in_progress" if idx == 0 else "pending",
                 "tool_used": "",  # 不再要求 LLM 输出 tool_used，统一为空
             })
 

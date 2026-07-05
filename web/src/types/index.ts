@@ -49,6 +49,7 @@ export interface ActEvent {
     step: number;
     tool: string;
     args: Record<string, unknown>;
+    tool_call_id?: string;
   };
 }
 
@@ -58,6 +59,7 @@ export interface ObserveEvent {
     step: number;
     content: string;
     success: boolean;
+    tool_call_id?: string;
   };
 }
 
@@ -122,6 +124,7 @@ export interface ReactStep {
   thinkContent: string;
   actTool?: string;
   actArgs?: Record<string, unknown>;
+  toolCallId?: string;
   observeContent?: string;
   observeSuccess?: boolean;
   /** 是否正在执行中（think 已到但 observe 还没来） */

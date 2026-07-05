@@ -28,22 +28,44 @@ function createEmptyAgentMessage(id: string): AgentMessageData {
 /** localStorage key：当前激活的会话 ID */
 const ACTIVE_SESSION_KEY = "agentz_active_session_id";
 
-/** 规范化旧 meta 中的 plan 状态：若全部 pending 但消息已完成，则标记为 completed */
+/** 规范化旧 meta 中的 plan 状态：根据 reactSteps 已完成的步骤数同步 plan 进度 */
 function normalizePlanStatuses(agentData: AgentMessageData): AgentMessageData {
   const plan = agentData.plan || [];
+  if (plan.length === 0) return agentData;
+
+  // 如果消息已完成且 plan 全部为 pending（旧数据），则根据 reactSteps 数量推导进度
   if (
-    plan.length > 0 &&
     !agentData.isStreaming &&
-    agentData.reactSteps &&
-    agentData.reactSteps.length > 0 &&
     plan.every((p) => p.status === "pending")
   ) {
+    const completedCount = agentData.reactSteps
+      ? agentData.reactSteps.filter((s) => s.observeContent && !s.isRunning).length
+      : 0;
     return {
       ...agentData,
-      plan: plan.map((p) => ({ ...p, status: "completed" as const })),
+      plan: plan.map((p, idx) => ({
+        ...p,
+        status:
+          idx < completedCount
+            ? ("completed" as const)
+            : idx === completedCount
+              ? ("in_progress" as const)
+              : ("pending" as const),
+      })),
     };
   }
-  return agentData;
+
+  // 统一后端可能使用的不一致状态名：done -> completed, running -> in_progress, skipped -> pending
+  return {
+    ...agentData,
+    plan: plan.map((p) => {
+      let status = p.status;
+      if (status === "done") status = "completed" as const;
+      else if (status === "running") status = "in_progress" as const;
+      else if (status === "skipped") status = "pending" as const;
+      return { ...p, status };
+    }),
+  };
 }
 
 export default function App() {
@@ -268,24 +290,20 @@ export default function App() {
                   { step, thinkContent: event.content.content, isRunning: true },
                 ];
               }
-              // 更新 plan 中的步骤状态
-              agent.plan = agent.plan.map((p, idx) => {
-                if (idx === step - 1 && p.status === "pending") {
-                  return { ...p, status: "in_progress" as const };
-                }
-                return p;
-              });
               break;
             }
             case "act": {
               const step = event.content.step;
-              const existingStepIdx = agent.reactSteps.findIndex((s) => s.step === step);
+              const existingStepIdx = agent.reactSteps.findIndex(
+                (s) => s.step === step && (!event.content.tool_call_id || !s.toolCallId || s.toolCallId === event.content.tool_call_id),
+              );
               if (existingStepIdx >= 0) {
                 const steps = [...agent.reactSteps];
                 steps[existingStepIdx] = {
                   ...steps[existingStepIdx],
                   actTool: event.content.tool,
                   actArgs: event.content.args,
+                  toolCallId: event.content.tool_call_id,
                 };
                 agent.reactSteps = steps;
               } else {
@@ -297,28 +315,25 @@ export default function App() {
                     thinkContent: "",
                     actTool: event.content.tool,
                     actArgs: event.content.args,
+                    toolCallId: event.content.tool_call_id,
                     isRunning: true,
                   },
                 ];
               }
-              // 更新 plan 中的 tool_used
-              agent.plan = agent.plan.map((p, idx) => {
-                if (idx === step - 1 && p.status === "in_progress") {
-                  return { ...p, tool_used: event.content.tool };
-                }
-                return p;
-              });
               break;
             }
             case "observe": {
               const step = event.content.step;
-              const existingStepIdx = agent.reactSteps.findIndex((s) => s.step === step);
+              const existingStepIdx = agent.reactSteps.findIndex(
+                (s) => s.step === step && (!event.content.tool_call_id || !s.toolCallId || s.toolCallId === event.content.tool_call_id),
+              );
               if (existingStepIdx >= 0) {
                 const steps = [...agent.reactSteps];
                 steps[existingStepIdx] = {
                   ...steps[existingStepIdx],
                   observeContent: event.content.content,
                   observeSuccess: event.content.success,
+                  toolCallId: event.content.tool_call_id || steps[existingStepIdx].toolCallId,
                   isRunning: false,
                 };
                 agent.reactSteps = steps;
@@ -329,19 +344,13 @@ export default function App() {
                   {
                     step,
                     thinkContent: "",
+                    toolCallId: event.content.tool_call_id,
                     observeContent: event.content.content,
                     observeSuccess: event.content.success,
                     isRunning: false,
                   },
                 ];
               }
-              // 更新 plan 中的步骤状态为 completed
-              agent.plan = agent.plan.map((p, idx) => {
-                if (idx === step - 1 && p.status === "in_progress") {
-                  return { ...p, status: "completed" as const };
-                }
-                return p;
-              });
               break;
             }
             case "synthesize": {

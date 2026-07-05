@@ -29,7 +29,7 @@ def _setup_state_with_tool_result(state=None):
         "success": True,
     }
     state["plan"] = [
-        {"step_index": 1, "description": "检索财报数据", "status": "running", "tool_used": "rag_search"},
+        {"step_index": 1, "description": "检索财报数据", "status": "in_progress", "tool_used": "rag_search"},
         {"step_index": 2, "description": "计算指标", "status": "pending", "tool_used": "python_execute"},
     ]
     state["current_step_index"] = 0
@@ -181,6 +181,20 @@ class TestObservePolishRules:
         assert result["react_loop_count"] == 2
         assert "未检索到相关内容" in result["current_observation"]
 
+    def test_browser_unavailable不推进步骤(self):
+        """browser_use 不可用时不应推进步骤。"""
+        state = _setup_state_with_tool_result()
+        state["current_tool_call"] = {
+            "tool_name": "browser_use",
+            "tool_args": {"action": "go_to_url", "url": "https://example.com"},
+            "tool_result": "状态：失败\n错误：BROWSER_UNAVAILABLE - 浏览器工具不可用",
+            "success": False,
+        }
+        result = observe_node(state)
+
+        assert "current_step_index" not in result
+        assert "BROWSER_UNAVAILABLE" in result["current_observation"]
+
     def test_rag有效结果写入collected_data(self):
         """检索类工具返回有效结果时，应写入 collected_data 供 synthesize 使用。"""
         state = _setup_state_with_tool_result()
@@ -190,3 +204,100 @@ class TestObservePolishRules:
         assert result["current_step_index"] == 1
         assert "collected_data" in result
         assert "rag_search" in result["collected_data"]
+
+
+class TestObserveNoToolCall:
+    """测试思考节点未调用工具时的 observe_node 行为。"""
+
+    def test_步骤未完成时不设置is_finished(self):
+        """当前步骤未完成且无工具调用时，不应设 is_finished，继续循环。"""
+        state = create_initial_state("分析查询")
+        state["current_tool_call"] = None
+        state["plan"] = [
+            {"step_index": 1, "description": "检索财报数据", "status": "in_progress", "tool_used": ""},
+            {"step_index": 2, "description": "计算指标", "status": "pending", "tool_used": ""},
+        ]
+        state["current_step_index"] = 0
+        state["react_loop_count"] = 1
+        result = observe_node(state)
+
+        assert result.get("is_finished") is not True
+        assert "尚未完成" in result["current_observation"]
+
+    def test_步骤已完成时设置is_finished(self):
+        """当前步骤已完成且无工具调用时，应设 is_finished=True。"""
+        state = create_initial_state("分析查询")
+        state["current_tool_call"] = None
+        state["plan"] = [
+            {"step_index": 1, "description": "检索财报数据", "status": "completed", "tool_used": "rag_search"},
+            {"step_index": 2, "description": "计算指标", "status": "completed", "tool_used": "python_execute"},
+        ]
+        state["current_step_index"] = 2
+        state["react_loop_count"] = 5
+        result = observe_node(state)
+
+        assert result.get("is_finished") is True
+        assert "已完成" in result["current_observation"]
+
+    def test_无plan时默认设is_finished(self):
+        """plan 为空且无工具调用时，默认设 is_finished=True。"""
+        state = create_initial_state("分析查询")
+        state["current_tool_call"] = None
+        state["plan"] = []
+        state["current_step_index"] = 0
+        state["react_loop_count"] = 1
+        result = observe_node(state)
+
+        assert result.get("is_finished") is True
+
+    def test_步骤pending时视为未完成(self):
+        """步骤 status 为 pending 时应视为未完成，不设 is_finished。"""
+        state = create_initial_state("分析查询")
+        state["current_tool_call"] = None
+        state["plan"] = [
+            {"step_index": 1, "description": "检索数据", "status": "pending", "tool_used": ""},
+        ]
+        state["current_step_index"] = 0
+        state["react_loop_count"] = 1
+        result = observe_node(state)
+
+        assert result.get("is_finished") is not True
+
+    def test_当前步骤完成但有其他步骤pending时不设is_finished(self):
+        """当前步骤已完成但仍有其他步骤 pending 时，不应设 is_finished，继续循环。"""
+        state = create_initial_state("分析查询")
+        state["current_tool_call"] = None
+        state["plan"] = [
+            {"step_index": 1, "description": "检索数据", "status": "completed", "tool_used": "rag_search"},
+            {"step_index": 2, "description": "分析数据", "status": "pending", "tool_used": ""},
+        ]
+        state["current_step_index"] = 2  # 索引越界，当前步骤不存在
+        state["react_loop_count"] = 3
+        result = observe_node(state)
+
+        # 第二步仍为 pending，不应设 is_finished
+        assert result.get("is_finished") is not True
+        assert "未完成" in result["current_observation"]
+
+
+class TestObserveCarryToolCall:
+    """测试 observe_node 向前传递 current_tool_call。"""
+
+    def test_有工具调用时传递current_tool_call(self):
+        """observe_node 应在返回字典中包含 current_tool_call，确保 SSE 配对。"""
+        state = _setup_state_with_tool_result()
+        result = observe_node(state)
+
+        assert "current_tool_call" in result
+        assert result["current_tool_call"]["tool_name"] == "rag_search"
+        assert result["current_tool_call"]["success"] is True
+
+    def test_无工具调用时current_tool_call为None(self):
+        """无工具调用时，返回的 current_tool_call 应为 None。"""
+        state = create_initial_state("分析查询")
+        state["current_tool_call"] = None
+        state["plan"] = []
+        state["react_loop_count"] = 1
+        result = observe_node(state)
+
+        assert result.get("current_tool_call") is None
