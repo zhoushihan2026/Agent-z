@@ -137,24 +137,39 @@ Raw 事件
 ```python
 def _should_compress(state: dict) -> bool:
     """判断是否需要触发会话压缩（纯代码判断，不调 LLM）。"""
-    # 必须是 deliberative 任务
-    if state.get("processing_mode") != "deliberative":
-        return False
-    # 必须任务完成
-    if not state.get("is_finished"):
-        return False
+    
+    # 路径1：标准路径（deliberative + 完成 + 有价值条件）
+    if state.get("processing_mode") == "deliberative" and state.get("is_finished"):
+        act_history = state.get("act_history", [])
+        has_failure = any(not act.get("success", True) for act in act_history)
+        has_enough_activity = len(act_history) >= 3
 
-    act_history = state.get("act_history", [])
-    has_failure = any(not act.get("success", True) for act in act_history)
-    has_enough_activity = len(act_history) >= 3
+        user_messages = [m for m in state.get("messages", []) if m.type == "human"]
+        durable_keywords = ["以后", "每次都", "一直", "总是要", "记住"]
+        has_durable_signal = any(
+            kw in msg.content for msg in user_messages for kw in durable_keywords
+        )
 
-    user_messages = [m for m in state.get("messages", []) if m.type == "human"]
-    durable_keywords = ["以后", "每次都", "一直", "总是要", "记住"]
-    has_durable_signal = any(
-        kw in msg.content for msg in user_messages for kw in durable_keywords
-    )
+        if has_failure or has_enough_activity or has_durable_signal:
+            return True
 
-    return has_failure or has_enough_activity or has_durable_signal
+    # 路径2：reactive 中的 durable/纠正信号单独捕获
+    # 用户可能在 reactive 模式下说"以后报告都要附数据来源"，这类偏好不能丢
+    # 用户可能在 reactive 模式下纠正 Agent 的错误，这类教训也不应遗漏
+    if state.get("processing_mode") == "reactive":
+        user_messages = [m for m in state.get("messages", []) if m.type == "human"]
+        durable_keywords = ["以后", "每次都", "一直", "总是要", "记住"]
+        correction_keywords = ["不对", "错了", "应该是", "你搞错了", "纠正", "不是这样的"]
+        has_durable_signal = any(
+            kw in msg.content for msg in user_messages for kw in durable_keywords
+        )
+        has_correction_signal = any(
+            kw in msg.content for msg in user_messages for kw in correction_keywords
+        )
+        if has_durable_signal or has_correction_signal:
+            return True
+
+    return False
 ```
 
 #### 3.1.2 执行方式：异步触发
@@ -333,11 +348,14 @@ def save_experience_node(state: dict) -> dict:
 
 ### 3.5 存储格式
 
-压缩结果存储在 `data/memory/session_memory/{session_id}.json`：
+压缩结果按**任务级**粒度存储，而非会话级。一个会话中可能有多个 deliberative 任务，每个任务有独立的压缩结果，便于上下文组装器按任务轮次匹配压缩摘要。
+
+存储路径：`data/memory/session_memory/{session_id}_task_{index}.json`
 
 ```json
 {
     "session_id": "sess_xxx",
+    "task_index": 0,
     "user_query": "分析中芯国际2024年财务表现",
     "query_type": "analytical",
     "processing_mode": "deliberative",
@@ -351,9 +369,11 @@ def save_experience_node(state: dict) -> dict:
 }
 ```
 
+**为什么是任务级而非会话级**：一个会话中用户可能连续问5个复杂问题（如先分析中芯国际、再对比台积电、再问供应链），每个问题是独立的 deliberative 任务。如果按会话级压缩，只产出一份摘要，上下文组装器无法分别替换每个任务对应的轮次。按任务级压缩，每个任务有独立摘要，组装器可以精确匹配。
+
 ### 3.6 会话压缩的清理
 
-保留最近 30 个会话的压缩结果。超过 30 个时，按时间戳删除最旧的。
+保留最近 30 个任务的压缩结果（注意是任务数而非会话数）。超过 30 个时，按时间戳删除最旧的。
 
 清理时机：每次写入新压缩结果后检查。
 
@@ -637,6 +657,20 @@ V2 的质量评分继续保留，但评分维度调整：
    验证：报告包含具体数字且有来源标注
 ```
 
+### 5.5 方法卡更新（同名取最新）
+
+方法卡可能过时——系统新增了工具或流程变化后，旧方法卡中的步骤可能不再是最优的。不做完整的遗忘管线（TTL、降权等），但增加轻量级更新机制：
+
+**规则**：当新抽取的方法卡和已有方法卡 `method_name` 相同时，比较两者的 `tools_used` 和 `method` 步骤：
+
+| 情况 | 处理 |
+|------|------|
+| 新方法卡的 tools_used 和已有方法卡完全相同 | 不更新（步骤没变） |
+| 新方法卡的 tools_used 包含已有方法卡没有的工具 | **更新**：用新方法卡替换旧方法卡，保留旧 evidence_event_ids 并追加新的 |
+| 新方法卡的 tools_used 是旧方法卡的子集 | 不更新（旧方法更全面） |
+
+更新时保留旧方法卡的 `experience_id`，只更新 `method`、`validation`、`failure_signals`、`recall_keywords`、`tools_used` 字段，并将 `timestamp` 更新为当前时间。
+
 ---
 
 ## 六、过程记忆（Process Memory）
@@ -711,6 +745,33 @@ process_memory: Annotated[list, lambda old, new: old + new]
 ```
 
 过程记忆是"活的"——它随会话进行实时更新。会话结束后，过程记忆中的有效信息被压缩进候选记忆，然后可能升格成全局性记忆。
+
+### 6.6 工具分类与过程记忆关闭规则
+
+observe_node 中过程记忆的"关闭"逻辑不仅按工具名精确匹配，还按**工具类别**关联关闭。原因是：一个工具的失败可能被另一个不同工具的成功解决（如 rag_search 失败后改用 web_search 成功，两者都是搜索类工具）。
+
+```python
+# 工具分类映射
+TOOL_CATEGORIES = {
+    "search": ["rag_search", "web_search", "browser_use"],
+    "compute": ["python_execute"],
+    "read": ["file_operator", "csv_reader"],
+}
+
+def _get_tool_category(tool_name: str) -> str:
+    """获取工具所属类别。"""
+    for category, tools in TOOL_CATEGORIES.items():
+        if tool_name in tools:
+            return category
+    return "unknown"
+```
+
+关闭规则：
+
+| 规则 | 逻辑 | 例子 |
+|------|------|------|
+| 同工具名关闭 | 新成功的工具名出现在 open 的 note 里 | python_execute 成功 → 关闭"python_execute 失败"的 open |
+| 同类工具关闭 | 新成功的工具和 open 的失败工具属于同一类别 | web_search 成功 → 关闭"rag_search 失败"的 open（都是搜索类） |
 
 ---
 
@@ -831,18 +892,24 @@ def _build_compressed_message(compression: dict) -> SystemMessage:
 用户查询
   ↓ FAISS 向量检索（top_k=10）
 候选经验列表（10 条）
-  ↓ LLM 生成检索关键词
-  ↓ 关键词匹配 rerank
+  ↓ 最低相似度门槛过滤
+  ├─ 最高相似度 < 0.5 → 跳过 rerank，直接返回空（不浪费 LLM 调用）
+  └─ 有候选 >= 0.5 → 继续
+      ↓ LLM 生成检索关键词
+      ↓ 关键词匹配 rerank
 精选经验列表（top_k=3）
 ```
+
+**最低相似度门槛**：如果 FAISS top_k=10 的候选中最高相似度都低于 0.5，说明全局性记忆中根本没有和当前任务相关的经验。此时跳过 LLM 生成检索关键词的步骤，直接返回空，避免浪费一次 gpt-3.5-turbo 调用。
 
 **关键词 Rerank 流程**：
 
 1. 从 FAISS 检索 top_k=10 条候选经验
-2. 让 LLM 根据当前任务生成 3-5 个检索关键词（`recall_keywords`）
-3. 对每条候选经验，统计其 `recall_keywords` + `statement` + `category` 中命中检索关键词的数量
-4. 按 FAISS 相似度 * 0.6 + 关键词命中率 * 0.4 计算综合得分
-5. 取 top_k=3 条
+2. 检查最高相似度是否 >= 0.5，低于则直接返回空
+3. 让 LLM 根据当前任务生成 3-5 个检索关键词（`recall_keywords`）
+4. 对每条候选经验，统计其 `recall_keywords` + `statement` + `category` 中命中检索关键词的数量
+5. 按 FAISS 相似度 * 0.6 + 关键词命中率 * 0.4 计算综合得分
+6. 取 top_k=3 条
 
 #### 8.3.2 LLM 生成检索关键词 Prompt
 
@@ -1051,9 +1118,21 @@ def observe_node(state: AgentState) -> dict:
     # 工具成功时检查是否有对应的 open 过程记忆可关闭
     if current_tool_call and current_tool_call.get("success", True):
         tool_name = current_tool_call.get("tool_name", "")
+        tool_category = _get_tool_category(tool_name)
         for pm in process_memory:
-            if pm["status"] == "open" and tool_name in pm["note"]:
-                pm["status"] = "resolved"
+            if pm["status"] == "open":
+                # 规则1：同工具名关闭
+                if tool_name in pm["note"]:
+                    pm["status"] = "resolved"
+                # 规则2：同类工具关闭（搜索类、计算类等）
+                elif tool_category != "unknown":
+                    open_tool_category = None
+                    for cat, tools in TOOL_CATEGORIES.items():
+                        if any(t in pm["note"] for t in tools):
+                            open_tool_category = cat
+                            break
+                    if open_tool_category == tool_category:
+                        pm["status"] = "resolved"
 
     return {
         # ... 现有返回字段 ...
@@ -1130,6 +1209,7 @@ if open_process:
 | MEMORY_PROMOTION_REPEAT_THRESHOLD | 2 | 跨会话重复多少次可升格（通道二） |
 | MEMORY_PROMOTION_SIMILARITY_THRESHOLD | 0.8 | 候选记忆语义相似度阈值（通道二） |
 | MEMORY_RECALL_CANDIDATE_TOP_K | 10 | FAISS 初检候选数（rerank 前） |
+| MEMORY_RECALL_MIN_SIMILARITY | 0.5 | FAISS 候选最低相似度门槛（低于则跳过 rerank） |
 | MEMORY_RECALL_KEYWORD_WEIGHT | 0.4 | 关键词 rerank 权重 |
 | MEMORY_RECALL_SIMILARITY_WEIGHT | 0.6 | 向量相似度权重 |
 | MEMORY_INJECT_MAX_SINGLE_TOKENS | 200 | 单条经验注入最大 token |
@@ -1367,6 +1447,12 @@ class LongTermMemory:
         添加已升格的全局性记忆记录。
         参数从 state 改为 record（由 promoter 产出的升格后记录），
         包含 category/statement/promotion_reason/evidence_event_ids/recall_keywords 等新字段。
+        
+        去重逻辑从 V1 的"query 精确匹配"改为"statement 语义去重"：
+        - 将新 record 的 statement 生成 embedding
+        - 与已有记录的 statement embedding 做余弦相似度
+        - 相似度 > 0.9 视为同义重复，保留证据链更丰富的版本
+        - embedding 不可用时退化为字符串精确匹配
         """
 
     def retrieve_experiences(self, query: str, top_k: int, similarity_threshold: float) -> list: ...
@@ -1377,6 +1463,15 @@ class LongTermMemory:
     def search_candidates(self, query_embedding: list, top_k: int) -> list[dict]:
         """FAISS 向量检索，返回 top_k 候选（用于 rerank 前）。"""
 ```
+
+**去重逻辑变更说明**：
+
+| | V1 去重 | V2 去重 |
+|---|---|---|
+| 匹配字段 | `query` 精确匹配 | `statement` 语义相似度 |
+| 问题 | "分析中芯国际财务" vs "看看中芯国际财务数据"是同义但精确匹配认为是两条 | 语义相似度 0.9+ 视为重复 |
+| 保留策略 | 保留 quality_score 更高的 | 保留证据链更丰富的（evidence_event_ids 更多的） |
+| 降级方案 | 无 | embedding 不可用时退化为字符串匹配 |
 
 ### 15.3 LongTermMemory 单例优化
 
@@ -1431,11 +1526,13 @@ class LongTermMemory:
 ### 17.1 会话压缩
 
 - [ ] 完成一次 deliberative 任务后，`data/memory/session_memory/` 下新增对应 JSON 文件
+- [ ] JSON 文件按任务级粒度存储（`{session_id}_task_{index}.json`），同一会话多个任务有多个文件
 - [ ] JSON 文件包含 summary、candidate_memories、process_memory 三个字段
 - [ ] candidate_memories 中的 statement 脱离原对话也能读懂
 - [ ] evidence_event_ids 引用的是实际存在的事件 ID
 - [ ] 超过 30 个压缩文件时自动清理最旧的
-- [ ] reactive 任务不触发压缩
+- [ ] reactive 任务不触发压缩（除非有 durable 或纠正信号）
+- [ ] reactive 任务中用户说"以后..."或"不对/错了"时触发压缩
 - [ ] 压缩在后台线程执行，不增加用户等待时间
 - [ ] 压缩失败不影响主流程
 
@@ -1453,11 +1550,13 @@ class LongTermMemory:
 - [ ] 从失败-修正-验证的会话中能抽取方法卡
 - [ ] 方法卡包含 applies_when/method/validation/failure_signals 四个字段
 - [ ] 方法卡能被召回注入上下文
+- [ ] 同名方法卡取最新版：新方法卡 tools_used 更丰富时自动更新旧方法卡
 
 ### 17.4 过程记忆
 
 - [ ] 工具失败时 observe_node 自动新增一条 open 过程记忆
-- [ ] 工具成功时对应的 open 过程记忆自动标记为 resolved
+- [ ] 工具成功时对应的 open 过程记忆自动标记为 resolved（同工具名 + 同类工具两种规则）
+- [ ] 同类工具关闭：rag_search 失败后 web_search 成功，rag_search 的 open 被关闭
 - [ ] 连续失败时 think_node 能看到当前 open 状态的过程记忆
 - [ ] 过程记忆不跨会话保留（会话结束后进入压缩）
 
@@ -1472,6 +1571,7 @@ class LongTermMemory:
 ### 17.6 召回升级
 
 - [ ] 新会话召回使用 FAISS + 关键词 rerank 双层检索
+- [ ] FAISS 最高相似度 < 0.5 时跳过 rerank，不浪费 LLM 调用
 - [ ] LLM 能为当前任务生成合理的检索关键词
 - [ ] rerank 后的结果比纯向量检索更精准
 - [ ] 过程记忆召回在工具卡住时触发
@@ -1499,13 +1599,16 @@ class LongTermMemory:
 |------|------|----------|
 | 会话压缩 LLM 调用增加成本 | 每个任务多 1-2 次 gpt-3.5-turbo 调用 | 成本可控（gpt-3.5-turbo 便宜），且只在满足条件时触发 |
 | 异步线程状态快照不完整 | 压缩丢失部分信息 | 线程内重建必要字段，极端情况下压缩失败静默处理 |
+| 异步压缩竞态：紧邻两次任务间经验不可用 | 第2次任务看不到第1次刚升格的经验 | 影响可接受：最多再犯一次同样的错，第3次任务时经验已可用；同一会话内上下文组装器保留原始消息 |
 | 候选记忆池越来越大 | 检索变慢 | 限制 100 条上限，定期清理 |
 | 升格判断 LLM 调用失败 | 候选记忆无法升格 | 保留在候选池，下次重试 |
-| 关键词 rerank 增加延迟 | 新会话召回变慢 | 增加约 1s（一次 gpt-3.5-turbo 调用），可接受 |
+| 关键词 rerank 增加延迟 | 新会话召回变慢 | 增加约 1s（一次 gpt-3.5-turbo 调用），可接受；最低相似度门槛可跳过不必要的 rerank |
 | 过程记忆累积过多 | THINK_PROMPT 过长 | 只展示 open 状态的，最多 5 条 |
 | embedding API 不可用 | 向量检索失败 | 降级为关键词匹配检索（与 Hermes 原始方案一致） |
 | FAISS + JSONL 格式变更 | 旧数据不兼容 | 加载时检测字段缺失，缺失字段填充默认值 |
 | 上下文组装器找不到压缩摘要 | 老轮次无摘要可替换 | 回退为保留原始消息（与旧行为一致） |
+| 方法卡过时 | Agent 走旧流程 | 同名方法卡取最新版（5.5 节），旧版自动更新 |
+| statement 语义去重误判 | 语义不同但相似度高，误删有效记忆 | 阈值 0.9 足够严格，且保留证据链更丰富的版本而非直接删除 |
 
 ---
 
