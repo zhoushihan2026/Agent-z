@@ -153,20 +153,15 @@ def _should_compress(state: dict) -> bool:
         if has_failure or has_enough_activity or has_durable_signal:
             return True
 
-    # 路径2：reactive 中的 durable/纠正信号单独捕获
+    # 路径2：reactive 中的 durable 信号单独捕获
     # 用户可能在 reactive 模式下说"以后报告都要附数据来源"，这类偏好不能丢
-    # 用户可能在 reactive 模式下纠正 Agent 的错误，这类教训也不应遗漏
     if state.get("processing_mode") == "reactive":
         user_messages = [m for m in state.get("messages", []) if m.type == "human"]
         durable_keywords = ["以后", "每次都", "一直", "总是要", "记住"]
-        correction_keywords = ["不对", "错了", "应该是", "你搞错了", "纠正", "不是这样的"]
         has_durable_signal = any(
             kw in msg.content for msg in user_messages for kw in durable_keywords
         )
-        has_correction_signal = any(
-            kw in msg.content for msg in user_messages for kw in correction_keywords
-        )
-        if has_durable_signal or has_correction_signal:
+        if has_durable_signal:
             return True
 
     return False
@@ -395,61 +390,69 @@ def save_experience_node(state: dict) -> dict:
 
 ### 4.2 升格判断逻辑
 
-#### 4.2.1 通道一：用户显式长期要求
+与 Hermes 原设计一致，升格判断**统一由 LLM 完成**，不做代码级的通道分类——代码只负责准备输入（候选记忆 + 已有候选记忆池 + 事件流），LLM 一次性判断哪些可以升格、属于哪条通道、是否需要同义合并。
 
-判断方式：`candidate_memory.durable == True`
+#### 4.2.1 代码预处理（不调 LLM）
 
-此通道由代码直接判断，不需要 LLM。在会话压缩时，模型已经判断了 `durable` 字段。
+在调用 LLM 前，代码先做两件事：
 
-#### 4.2.2 通道二：跨会话重复
+1. **通道二预筛**：计算新候选记忆的 statement embedding 与候选记忆池中已有候选的 embedding 余弦相似度，相似度 > 0.8 的标记为"可能重复"，作为 LLM 的参考输入
+2. **通道三标记**：检查 evidence_event_ids 中是否有 status=failed 的 act 事件，有的标记为"有工具失败证据"，作为 LLM 的参考输入
 
-判断方式：对比新候选记忆与已有候选记忆的 statement 语义相似度。
+这两步只做标记，不做最终判断——最终升格与否、走哪条通道，由 LLM 决定。
 
-**实现方案**：
+#### 4.2.2 LLM 判断
 
-1. 将新候选记忆的 `statement` 生成 embedding
-2. 与已有候选记忆（存在 `data/memory/candidate_memories.jsonl` 中）的 embedding 做余弦相似度
-3. 相似度 > 0.8 视为重复出现
-
-**降级方案**：如果 embedding 不可用，用关键词重叠度（Jaccard 系数 > 0.5）判断重复。
-
-#### 4.2.3 通道三：工具失败证据
-
-判断方式：候选记忆的 `evidence_event_ids` 中包含 `status=failed` 的 act 事件，且 `kind=lesson`。
-
-此通道由代码直接判断，通过检查 evidence 事件中是否存在 `status=failed` 的 act 事件。
+将新候选记忆、候选记忆池、预筛标记一起交给 LLM，让 LLM 一次性输出：
+- 哪些候选记忆可以升格
+- 升格通道是什么（三条选一）
+- 同义记忆是否需要合并，合并后的 statement 怎么写
+- recall_keywords 由 LLM 根据语义生成
 
 ### 4.3 升格判断 Prompt
 
-对于通道二（跨会话重复）需要 LLM 做同义合并判断：
+与 Hermes 的 `02_promote_long_term_memory.py` 一致，把所有候选记忆一次性交给 LLM 判断：
 
 ```
-你是一个记忆升格判断模块。以下是新产生的候选记忆和已有的候选记忆。
+你是一个记忆升格判断模块。以下是新产生的候选记忆和已有的候选记忆池。
 
 新候选记忆：
 {new_candidates_json}
 
-已有候选记忆：
+已有候选记忆池：
 {existing_candidates_json}
 
-请判断：
-1. 哪些新候选记忆与已有候选记忆表达了相同的含义（同义合并）？
-2. 合并后的 statement 应该怎样写？
+代码预筛标记（仅供参考）：
+- 可能重复的候选对：{similar_pairs}
+- 有工具失败证据的候选：{failure_evidence_ids}
+
+请判断哪些候选记忆可以升格为长期记忆。
 
 规则：
-- 同一件事的不同表述要合并成一条，不要重复升格
-- 合并后的 statement 要更全面、更通用
-- 不相关的候选记忆不要合并
+1. 只升格跨会话仍然可能影响行为的内容
+2. 升格通道只有三条：用户显式长期要求、跨会话重复出现、工具失败后形成的修正规则
+3. 同一件事的不同表述要合并成一条，不要重复升格
+4. 合并后的 statement 要更全面、更通用
+5. category 按候选的 kind 归类：user_preference 还是 user_preference；fact 归 stable_fact；lesson 归 project_rule；skill 归 capability_method
+6. recall_keywords 由你根据语义生成，是这条记忆的检索词
+7. 每条都要保留 evidence_event_ids，能追回原始事件
+8. 不要把一次性地点、票务闲聊、口误升格为长期规则
+9. 宁紧勿松：不确定是否该升格的，不要升格
 
 输出严格 JSON 格式：
 {{
-    "merge_groups": [
+    "promoted_records": [
         {{
-            "merged_statement": "合并后的 statement",
-            "merged_evidence_ids": ["event_id_1", "event_id_2"],
-            "source_candidate_ids": ["cand_1", "cand_2"]
+            "category": "user_preference | project_rule | stable_fact | capability_method",
+            "statement": "通用化的独立陈述",
+            "promotion_reason": "explicit_user_instruction | repeated_across_sessions | tool_failure_evidence",
+            "recall_keywords": ["关键词1", "关键词2"],
+            "evidence_event_ids": ["evt_xxx_1", "evt_yyy_2"],
+            "source_candidate_ids": ["cand_1", "cand_2"],
+            "is_merged": false
         }}
-    ]
+    ],
+    "unpromoted_candidate_ids": ["cand_3"]
 }}
 ```
 
@@ -542,18 +545,17 @@ def save_experience_node(state: dict) -> dict:
      升格后的全局性记忆写入 FAISS + experiences.jsonl
 ```
 
-### 4.7 质量评分调整
+### 4.7 质量评分
 
-V2 的质量评分继续保留，但评分维度调整：
+保留 V1 的质量评分逻辑，维度不变：
 
 | 维度 | 权重 | 评分标准 |
 |------|------|---------|
-| 任务完成度 | 0.3 | is_finished=True 得满分 |
-| 结论明确度 | 0.2 | final_answer 非空且 > 100 字 |
+| 任务完成度 | 0.4 | is_finished=True 得满分 |
+| 结论明确度 | 0.4 | final_answer 非空且 > 100 字 |
 | 步骤效率 | 0.2 | react_loop_count <= len(plan) * 3 |
-| 经验可复用性 | 0.3 | 新增：候选记忆数量越多、质量越高则得分越高 |
 
-**新增维度说明**：经验可复用性通过统计 `candidate_memories` 中 `kind=lesson` 和 `kind=skill` 的数量来评估——一次分析任务如果产生了多条教训或方法，说明经验密度高，更值得保存。
+升格机制本身已在控制"什么记忆值得存"，不需要在质量评分中再加一层筛选。
 
 ---
 
@@ -657,19 +659,13 @@ V2 的质量评分继续保留，但评分维度调整：
    验证：报告包含具体数字且有来源标注
 ```
 
-### 5.5 方法卡更新（同名取最新）
+### 5.5 方法卡更新（同名替换）
 
-方法卡可能过时——系统新增了工具或流程变化后，旧方法卡中的步骤可能不再是最优的。不做完整的遗忘管线（TTL、降权等），但增加轻量级更新机制：
+方法卡可能过时——系统新增了工具或流程变化后，旧方法卡中的步骤可能不再是最优的。不做完整的遗忘管线，但增加轻量级更新机制：
 
-**规则**：当新抽取的方法卡和已有方法卡 `method_name` 相同时，比较两者的 `tools_used` 和 `method` 步骤：
+**规则**：当新抽取的方法卡和已有方法卡 `method_name` 相同时，直接用新方法卡替换旧方法卡。保留旧方法卡的 `experience_id`，更新 `method`、`validation`、`failure_signals`、`recall_keywords` 字段，并将 `timestamp` 更新为当前时间。
 
-| 情况 | 处理 |
-|------|------|
-| 新方法卡的 tools_used 和已有方法卡完全相同 | 不更新（步骤没变） |
-| 新方法卡的 tools_used 包含已有方法卡没有的工具 | **更新**：用新方法卡替换旧方法卡，保留旧 evidence_event_ids 并追加新的 |
-| 新方法卡的 tools_used 是旧方法卡的子集 | 不更新（旧方法更全面） |
-
-更新时保留旧方法卡的 `experience_id`，只更新 `method`、`validation`、`failure_signals`、`recall_keywords`、`tools_used` 字段，并将 `timestamp` 更新为当前时间。
+理由：同名方法卡说明描述的是同一个流程，新版本一定是在更多会话中验证过的，比旧版本更可靠。
 
 ---
 
@@ -718,12 +714,13 @@ process_memory: Annotated[list, lambda old, new: old + new]
 - 工具返回空结果
 - 检测到重复思考（卡死检测）
 
-**召回方式**：
+**召回方式**（纯代码，不调 LLM）：
+
+过程记忆数量很少（一个会话内不超过 5 条），直接筛选 `status == "open"` 的条目注入 THINK_PROMPT，不需要 LLM 生成检索关键词。
 
 1. 从 `state["process_memory"]` 中筛选 `status == "open"` 的条目
-2. 使用 LLM 根据当前失败事件生成检索关键词
-3. 用关键词匹配过程记忆中的 `note`
-4. 将匹配到的过程记忆注入 `THINK_PROMPT` 的上下文
+2. 最多取 5 条
+3. 格式化为文本注入 `THINK_PROMPT`
 
 **注入格式**（在 THINK_PROMPT 中追加）：
 
@@ -746,32 +743,20 @@ process_memory: Annotated[list, lambda old, new: old + new]
 
 过程记忆是"活的"——它随会话进行实时更新。会话结束后，过程记忆中的有效信息被压缩进候选记忆，然后可能升格成全局性记忆。
 
-### 6.6 工具分类与过程记忆关闭规则
+### 6.5 过程记忆关闭规则
 
-observe_node 中过程记忆的"关闭"逻辑不仅按工具名精确匹配，还按**工具类别**关联关闭。原因是：一个工具的失败可能被另一个不同工具的成功解决（如 rag_search 失败后改用 web_search 成功，两者都是搜索类工具）。
+observe_node 中过程记忆的"关闭"逻辑：工具成功时，检查是否有同工具名的 open 过程记忆，有的话标记为 resolved。
 
 ```python
-# 工具分类映射
-TOOL_CATEGORIES = {
-    "search": ["rag_search", "web_search", "browser_use"],
-    "compute": ["python_execute"],
-    "read": ["file_operator", "csv_reader"],
-}
-
-def _get_tool_category(tool_name: str) -> str:
-    """获取工具所属类别。"""
-    for category, tools in TOOL_CATEGORIES.items():
-        if tool_name in tools:
-            return category
-    return "unknown"
+# 工具成功时关闭同名的 open 过程记忆
+if current_tool_call and current_tool_call.get("success", True):
+    tool_name = current_tool_call.get("tool_name", "")
+    for pm in process_memory:
+        if pm["status"] == "open" and tool_name in pm["note"]:
+            pm["status"] = "resolved"
 ```
 
-关闭规则：
-
-| 规则 | 逻辑 | 例子 |
-|------|------|------|
-| 同工具名关闭 | 新成功的工具名出现在 open 的 note 里 | python_execute 成功 → 关闭"python_execute 失败"的 open |
-| 同类工具关闭 | 新成功的工具和 open 的失败工具属于同一类别 | web_search 成功 → 关闭"rag_search 失败"的 open（都是搜索类） |
+对于 rag_search 失败后 web_search 成功的场景：rag_search 的 open 不会被自动关闭，但 think_node 看到这条 open 时，Agent 能自己判断问题已解决（因为 web_search 的成功结果已经在上下文里了）。
 
 ---
 
@@ -1118,21 +1103,9 @@ def observe_node(state: AgentState) -> dict:
     # 工具成功时检查是否有对应的 open 过程记忆可关闭
     if current_tool_call and current_tool_call.get("success", True):
         tool_name = current_tool_call.get("tool_name", "")
-        tool_category = _get_tool_category(tool_name)
         for pm in process_memory:
-            if pm["status"] == "open":
-                # 规则1：同工具名关闭
-                if tool_name in pm["note"]:
-                    pm["status"] = "resolved"
-                # 规则2：同类工具关闭（搜索类、计算类等）
-                elif tool_category != "unknown":
-                    open_tool_category = None
-                    for cat, tools in TOOL_CATEGORIES.items():
-                        if any(t in pm["note"] for t in tools):
-                            open_tool_category = cat
-                            break
-                    if open_tool_category == tool_category:
-                        pm["status"] = "resolved"
+            if pm["status"] == "open" and tool_name in pm["note"]:
+                pm["status"] = "resolved"
 
     return {
         # ... 现有返回字段 ...
@@ -1317,14 +1290,11 @@ class ProcessMemoryManager:
     def on_tool_success(self, state: dict, tool_name: str) -> list[dict]:
         """工具成功时检查是否有对应的 open 过程记忆可关闭。"""
 
-    def get_open_items(self, process_memory: list[dict]) -> list[dict]:
-        """获取当前所有 open 状态的过程记忆。"""
+    def get_open_items(self, process_memory: list[dict], max_items: int = 5) -> list[dict]:
+        """获取当前所有 open 状态的过程记忆，最多 max_items 条。纯代码，不调 LLM。"""
 
     def build_process_context(self, process_memory: list[dict]) -> str:
         """构建注入 THINK_PROMPT 的过程记忆文本。"""
-
-    def recall_for_failure(self, state: dict, current_event: dict) -> list[dict]:
-        """工具卡住时召回相关的过程记忆。"""
 ```
 
 ### 14.4 `memory/recall.py` -- 召回模块
@@ -1356,10 +1326,6 @@ class MemoryRecaller:
                          query_keywords: list[str],
                          preferred_categories: list[str]) -> list[dict]:
         """关键词匹配 rerank。"""
-
-    def recall_process_memory(self, process_memory: list[dict],
-                               current_event: dict) -> list[dict]:
-        """过程记忆召回：从当前会话的过程笔记中取回相关状态。"""
 ```
 
 ### 14.5 `memory/context_assembler.py` -- 上下文组装器
@@ -1448,11 +1414,8 @@ class LongTermMemory:
         参数从 state 改为 record（由 promoter 产出的升格后记录），
         包含 category/statement/promotion_reason/evidence_event_ids/recall_keywords 等新字段。
         
-        去重逻辑从 V1 的"query 精确匹配"改为"statement 语义去重"：
-        - 将新 record 的 statement 生成 embedding
-        - 与已有记录的 statement embedding 做余弦相似度
-        - 相似度 > 0.9 视为同义重复，保留证据链更丰富的版本
-        - embedding 不可用时退化为字符串精确匹配
+        去重逻辑：用 statement 字符串模糊匹配（前20字+关键词重叠），
+        避免为几条记录做 embedding 去重的过度工程。
         """
 
     def retrieve_experiences(self, query: str, top_k: int, similarity_threshold: float) -> list: ...
@@ -1468,10 +1431,9 @@ class LongTermMemory:
 
 | | V1 去重 | V2 去重 |
 |---|---|---|
-| 匹配字段 | `query` 精确匹配 | `statement` 语义相似度 |
-| 问题 | "分析中芯国际财务" vs "看看中芯国际财务数据"是同义但精确匹配认为是两条 | 语义相似度 0.9+ 视为重复 |
+| 匹配字段 | `query` 精确匹配 | `statement` 前20字 + 关键词重叠 |
+| 问题 | "分析中芯国际财务" vs "看看中芯国际财务数据"是同义但精确匹配认为是两条 | 前20字相同或关键词重叠率 > 60% 视为重复 |
 | 保留策略 | 保留 quality_score 更高的 | 保留证据链更丰富的（evidence_event_ids 更多的） |
-| 降级方案 | 无 | embedding 不可用时退化为字符串匹配 |
 
 ### 15.3 LongTermMemory 单例优化
 
@@ -1531,34 +1493,32 @@ class LongTermMemory:
 - [ ] candidate_memories 中的 statement 脱离原对话也能读懂
 - [ ] evidence_event_ids 引用的是实际存在的事件 ID
 - [ ] 超过 30 个压缩文件时自动清理最旧的
-- [ ] reactive 任务不触发压缩（除非有 durable 或纠正信号）
-- [ ] reactive 任务中用户说"以后..."或"不对/错了"时触发压缩
+- [ ] reactive 任务不触发压缩（除非有 durable 信号）
+- [ ] reactive 任务中用户说"以后..."时触发压缩
 - [ ] 压缩在后台线程执行，不增加用户等待时间
 - [ ] 压缩失败不影响主流程
 
 ### 17.2 升格机制
 
-- [ ] durable=True 的候选记忆自动通过通道一升格
-- [ ] evidence 包含 failed act 且 kind=lesson 的候选记忆自动通过通道三升格
-- [ ] 出现在 2 个不同会话中的相似候选记忆通过通道二升格
-- [ ] 不满足任何通道的候选记忆进入候选池等待
+- [ ] LLM 能根据三条通道判断哪些候选记忆可以升格
 - [ ] 升格后的全局性记忆包含 category/statement/promotion_reason/evidence_event_ids/recall_keywords
 - [ ] 同义候选记忆被合并而非重复存储
+- [ ] 代码预筛标记（embedding 相似度 + 失败证据）作为 LLM 参考输入
+- [ ] 不满足升格条件的候选记忆进入候选池等待
 
 ### 17.3 能力/方法记忆
 
 - [ ] 从失败-修正-验证的会话中能抽取方法卡
 - [ ] 方法卡包含 applies_when/method/validation/failure_signals 四个字段
 - [ ] 方法卡能被召回注入上下文
-- [ ] 同名方法卡取最新版：新方法卡 tools_used 更丰富时自动更新旧方法卡
+- [ ] 同名方法卡直接替换旧版
 
 ### 17.4 过程记忆
 
 - [ ] 工具失败时 observe_node 自动新增一条 open 过程记忆
-- [ ] 工具成功时对应的 open 过程记忆自动标记为 resolved（同工具名 + 同类工具两种规则）
-- [ ] 同类工具关闭：rag_search 失败后 web_search 成功，rag_search 的 open 被关闭
+- [ ] 工具成功时同工具名的 open 过程记忆自动标记为 resolved
 - [ ] 连续失败时 think_node 能看到当前 open 状态的过程记忆
-- [ ] 过程记忆不跨会话保留（会话结束后进入压缩）
+- [ ] 过程记忆召回为纯代码实现（直接筛 open 条目），不调 LLM
 
 ### 17.5 上下文组装器
 
@@ -1597,18 +1557,17 @@ class LongTermMemory:
 
 | 风险 | 影响 | 降级方案 |
 |------|------|----------|
-| 会话压缩 LLM 调用增加成本 | 每个任务多 1-2 次 gpt-3.5-turbo 调用 | 成本可控（gpt-3.5-turbo 便宜），且只在满足条件时触发 |
+| 会话压缩 LLM 调用增加成本 | 每个任务多 1 次 gpt-3.5-turbo 调用 | 成本可控（gpt-3.5-turbo 便宜），且只在满足条件时触发 |
 | 异步线程状态快照不完整 | 压缩丢失部分信息 | 线程内重建必要字段，极端情况下压缩失败静默处理 |
-| 异步压缩竞态：紧邻两次任务间经验不可用 | 第2次任务看不到第1次刚升格的经验 | 影响可接受：最多再犯一次同样的错，第3次任务时经验已可用；同一会话内上下文组装器保留原始消息 |
+| 异步压缩竞态：紧邻两次任务间经验不可用 | 第2次任务看不到第1次刚升格的经验 | 影响可接受：最多再犯一次同样的错，第3次任务时经验已可用 |
 | 候选记忆池越来越大 | 检索变慢 | 限制 100 条上限，定期清理 |
 | 升格判断 LLM 调用失败 | 候选记忆无法升格 | 保留在候选池，下次重试 |
 | 关键词 rerank 增加延迟 | 新会话召回变慢 | 增加约 1s（一次 gpt-3.5-turbo 调用），可接受；最低相似度门槛可跳过不必要的 rerank |
 | 过程记忆累积过多 | THINK_PROMPT 过长 | 只展示 open 状态的，最多 5 条 |
-| embedding API 不可用 | 向量检索失败 | 降级为关键词匹配检索（与 Hermes 原始方案一致） |
+| embedding API 不可用 | 向量检索失败 | 降级为关键词匹配检索 |
 | FAISS + JSONL 格式变更 | 旧数据不兼容 | 加载时检测字段缺失，缺失字段填充默认值 |
 | 上下文组装器找不到压缩摘要 | 老轮次无摘要可替换 | 回退为保留原始消息（与旧行为一致） |
-| 方法卡过时 | Agent 走旧流程 | 同名方法卡取最新版（5.5 节），旧版自动更新 |
-| statement 语义去重误判 | 语义不同但相似度高，误删有效记忆 | 阈值 0.9 足够严格，且保留证据链更丰富的版本而非直接删除 |
+| 方法卡过时 | Agent 走旧流程 | 同名方法卡直接替换旧版（5.5 节） |
 
 ---
 
