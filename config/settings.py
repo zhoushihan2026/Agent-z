@@ -116,6 +116,26 @@ class Settings:
         return float(os.getenv("LONG_TERM_QUALITY_MIN_SCORE", "0.5"))
 
     @property
+    def MEMORY_SESSION_DIR(self) -> str:
+        """会话内记忆存储目录（V2 新增，spec 13.1 节）。"""
+        return os.getenv("MEMORY_SESSION_DIR", "data/memory/session_memory")
+
+    @property
+    def MEMORY_CANDIDATE_PATH(self) -> str:
+        """候选记忆池路径（V2 新增，spec 13.1 节）。"""
+        return os.getenv("MEMORY_CANDIDATE_PATH", "data/memory/candidate_memories.jsonl")
+
+    @property
+    def MEMORY_MAX_SESSION_COMPRESSIONS(self) -> int:
+        """保留最近多少个会话的压缩结果（V2 新增，spec 13.1 节）。"""
+        return int(os.getenv("MEMORY_MAX_SESSION_COMPRESSIONS", "30"))
+
+    @property
+    def MEMORY_MAX_CANDIDATES(self) -> int:
+        """候选记忆池最大条数（V2 新增，spec 13.1 节）。"""
+        return int(os.getenv("MEMORY_MAX_CANDIDATES", "100"))
+
+    @property
     def SHORT_TERM_MAX_TOKENS(self) -> int:
         """短期记忆传入 LLM 前的最大 token 数（phase2 新增）。"""
         return int(os.getenv("SHORT_TERM_MAX_TOKENS", "80000"))

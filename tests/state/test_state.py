@@ -92,6 +92,11 @@ class TestInitialState:
         assert isinstance(state["messages"][0], HumanMessage)
         assert state["messages"][0].content == "测试查询"
 
+    def test_process_memory默认值(self):
+        """process_memory 初始应为空列表（spec 10.3 节 V2 新增字段）。"""
+        state = create_initial_state("测试")
+        assert state["process_memory"] == []
+
 
 class TestStateIsDict:
     """测试状态类型。"""

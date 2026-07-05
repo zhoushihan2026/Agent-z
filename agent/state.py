@@ -69,6 +69,10 @@ class AgentState(TypedDict):
     act_history: List[ToolCallInfo]
     observe_history: List[str]
 
+    # 过程记忆（V2 新增）：当前会话内的临时状态追踪
+    # 每条: {"note": str, "status": "open|resolved", "evidence_event_ids": list, "timestamp": str}
+    process_memory: Annotated[list, lambda old, new: old + new]
+
 
 def create_initial_state(user_query: str) -> dict:
     """创建 AgentState 的初始状态。
@@ -123,4 +127,7 @@ def create_initial_state(user_query: str) -> dict:
         "think_history": [],
         "act_history": [],
         "observe_history": [],
+
+        # 过程记忆（V2 新增）
+        "process_memory": [],
     }

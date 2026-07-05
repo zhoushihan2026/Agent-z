@@ -126,6 +126,26 @@ class TestMemoryConfig:
         settings = Settings()
         assert settings.LONG_TERM_SIMILARITY_THRESHOLD == 0.7
 
+    def test_MEMORY_SESSION_DIR默认值(self):
+        """MEMORY_SESSION_DIR 默认应为 data/memory/session_memory（spec 13.1 节 V2 新增）。"""
+        settings = Settings()
+        assert settings.MEMORY_SESSION_DIR == "data/memory/session_memory"
+
+    def test_MEMORY_CANDIDATE_PATH默认值(self):
+        """MEMORY_CANDIDATE_PATH 默认应为 data/memory/candidate_memories.jsonl（spec 13.1 节）。"""
+        settings = Settings()
+        assert settings.MEMORY_CANDIDATE_PATH == "data/memory/candidate_memories.jsonl"
+
+    def test_MEMORY_MAX_SESSION_COMPRESSIONS默认值(self):
+        """MEMORY_MAX_SESSION_COMPRESSIONS 默认应为 30（spec 13.1 节）。"""
+        settings = Settings()
+        assert settings.MEMORY_MAX_SESSION_COMPRESSIONS == 30
+
+    def test_MEMORY_MAX_CANDIDATES默认值(self):
+        """MEMORY_MAX_CANDIDATES 默认应为 100（spec 13.1 节）。"""
+        settings = Settings()
+        assert settings.MEMORY_MAX_CANDIDATES == 100
+
 
 class TestFrontendConfig:
     """测试前端配置（spec 6.6 节）。"""
