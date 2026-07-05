@@ -442,9 +442,14 @@ LLM 一次性输出：
             "is_merged": false
         }}
     ],
-    "unpromoted_candidate_ids": ["cand_3"]
+    "unpromoted_candidate_ids": ["cand_3"],
+    "updated_candidate_counts": {{
+        "cand_1": 2
+    }}
 }}
 ```
+
+`updated_candidate_counts`：LLM 判断某条新候选与候选池中已有候选同义时，由代码根据 LLM 判断结果将已有候选的 promotion_count +1。此字段是 LLM 告知代码"哪些候选池中的条目被同义匹配了"的信号，代码据此更新 promotion_count。
 
 ### 4.4 升格后的全局性记忆记录
 
@@ -517,6 +522,8 @@ LLM 一次性输出：
 
 ### 4.6 升格流程
 
+升格判断由 LLM 统一完成（与 4.2 节一致），三条通道是 prompt 中的规则约束，不是代码的 if-else 分支。
+
 ```
 新会话完成
   ↓
@@ -524,16 +531,17 @@ LLM 一次性输出：
   ├─ 不满足 → 不触发压缩，END
   └─ 满足 → 启动后台线程
        ↓
-     会话压缩（异步）→ 产生新候选记忆 + 过程记忆
+     第一步：会话压缩 → 产生新候选记忆 + 过程记忆
        ↓
-     新候选记忆逐条判断：
-       ├─ durable=True → 通道一升格
-       ├─ evidence 包含 failed act 且 kind=lesson → 通道三升格
-       ├─ 与候选记忆池中已有候选语义重复 → promotion_count += 1
-       │   └─ promotion_count >= 2 → 通道二升格
-       └─ 不满足任何通道 → 写入候选记忆池等待
+     第二步：LLM 升格判断
+       输入：新候选记忆 + 候选记忆池
+       LLM 根据三条通道规则判断哪些可以升格
+       ├─ 可升格 → 写入全局性记忆（FAISS + experiences.jsonl）
+       └─ 不可升格 → 写入/更新候选记忆池
        ↓
-     升格后的全局性记忆写入 FAISS + experiences.jsonl
+     第三步：方法卡抽取（在升格写入后执行，LTM 已更新）
+       ↓
+     方法卡写入全局性记忆（同名替换旧版）
 ```
 
 ### 4.7 质量评分
@@ -545,6 +553,8 @@ LLM 一次性输出：
 | 任务完成度 | 0.4 | is_finished=True 得满分 |
 | 结论明确度 | 0.4 | final_answer 非空且 > 100 字 |
 | 步骤效率 | 0.2 | react_loop_count <= len(plan) * 3 |
+
+**计算位置**：在 `SessionCompressor.compress()` 中计算（compressor 拥有完整 state 信息），而非在 `LongTermMemory.add_experience()` 中。quality_score 写入候选记忆，随升格流程传递到最终的全局性记忆记录。
 
 升格机制本身已在控制"什么记忆值得存"，不需要在质量评分中再加一层筛选。
 
@@ -605,7 +615,9 @@ LLM 一次性输出：
 
 ### 5.3 方法卡抽取
 
-方法卡的抽取在会话压缩后、升格判断前执行（在同一线程中串行）。使用 LLM 从会话压缩结果中抽取：
+方法卡的抽取在**升格判断完成后**执行（在同一线程中串行）。使用 LLM 从会话压缩结果中抽取。
+
+**为什么在升格后而非升格前**：方法卡抽取需要读取已有长期记忆（避免重复），升格判断完成后 LTM 已更新，抽取器能看到最新的全局性记忆，避免产生与刚升格的记录重复的方法卡。这与 Hermes 的 `05_extract_capability_memory.py` 一致——它读取的就是更新后的 `long_term_memory.json`。
 
 ```
 你是一个方法抽取模块。请从以下会话记忆中抽取值得长期保存的能力/方法。
@@ -1045,17 +1057,26 @@ def save_experience_node(state: dict) -> dict:
             compressor.save(compressed)
 
             # 第二步：升格判断
+            promoted_records = []
             if compressed.get("candidate_memories"):
                 promoter = MemoryPromoter()
                 promoted_records = promoter.promote(
                     compressed["candidate_memories"],
                     compressed["session_id"],
                 )
-                # 第三步：写入全局性记忆
+                # 第三步：写入全局性记忆（升格后的记录）
                 if promoted_records:
                     ltm = LongTermMemory()
                     for record in promoted_records:
                         ltm.add_experience(record)
+                    ltm.close()
+
+                # 第四步：方法卡抽取（在升格写入后执行，LTM 已更新）
+                method_cards = promoter.extract_capability_method(compressed)
+                if method_cards:
+                    ltm = LongTermMemory()
+                    for card in method_cards:
+                        ltm.add_experience(card)
                     ltm.close()
         except Exception:
             pass  # 压缩失败不影响主流程
@@ -1170,8 +1191,7 @@ if open_process:
 | MEMORY_CANDIDATE_PATH | data/memory/candidate_memories.jsonl | 候选记忆池路径 |
 | MEMORY_MAX_SESSION_COMPRESSIONS | 30 | 保留最近多少个会话的压缩结果 |
 | MEMORY_MAX_CANDIDATES | 100 | 候选记忆池最大条数 |
-| MEMORY_PROMOTION_REPEAT_THRESHOLD | 2 | 跨会话重复多少次可升格（通道二） |
-| MEMORY_PROMOTION_SIMILARITY_THRESHOLD | 0.8 | 候选记忆语义相似度阈值（通道二） |
+| MEMORY_PROMOTION_REPEAT_THRESHOLD | 2 | 跨会话重复多少次可升格（通道二，LLM 参考信号） |
 | MEMORY_RECALL_CANDIDATE_TOP_K | 10 | FAISS 初检候选数（rerank 前） |
 | MEMORY_RECALL_MIN_SIMILARITY | 0.5 | FAISS 候选最低相似度门槛（低于则跳过 rerank） |
 | MEMORY_RECALL_KEYWORD_WEIGHT | 0.4 | 关键词 rerank 权重 |
@@ -1212,6 +1232,7 @@ class SessionCompressor:
                 "summary": str,
                 "candidate_memories": list[dict],
                 "process_memory": list[dict],
+                "quality_score": float,  # 质量评分（在 compressor 中计算，拥有完整 state）
                 "events": list[dict]  # 转换后的事件流（用于 evidence 追溯）
             }
         """
@@ -1221,6 +1242,9 @@ class SessionCompressor:
 
     def _llm_compress(self, events: list[dict], user_query: str) -> dict:
         """调用 LLM 对事件流做结构化压缩。"""
+
+    def _compute_quality_score(self, state: dict) -> float:
+        """计算质量评分（4.7 节定义的三个维度）。"""
 
     def save(self, result: dict) -> None:
         """将压缩结果保存到 data/memory/session_memory/。"""
@@ -1402,7 +1426,7 @@ class LongTermMemory:
         参数从 state 改为 record（由 promoter 产出的升格后记录），
         包含 category/statement/promotion_reason/evidence_event_ids/recall_keywords 等新字段。
         
-        去重逻辑：用 statement 字符串模糊匹配（前20字+关键词重叠），
+        去重逻辑：用 recall_keywords 重叠率判断（LLM 生成的关键词比 statement 前20字更语义化），
         避免为几条记录做 embedding 去重的过度工程。
         """
 
@@ -1419,8 +1443,9 @@ class LongTermMemory:
 
 | | V1 去重 | V2 去重 |
 |---|---|---|
-| 匹配字段 | `query` 精确匹配 | `statement` 前20字 + 关键词重叠 |
-| 问题 | "分析中芯国际财务" vs "看看中芯国际财务数据"是同义但精确匹配认为是两条 | 前20字相同或关键词重叠率 > 60% 视为重复 |
+| 匹配字段 | `query` 精确匹配 | `recall_keywords` 重叠率 |
+| 问题 | "分析中芯国际财务" vs "看看中芯国际财务数据"是同义但精确匹配认为是两条 | recall_keywords 是 LLM 生成的语义关键词，"python_execute" 和 "print" 和 "输出" 在两条同义记忆中会大量重叠 |
+| 判断逻辑 | 完全相同才视为重复 | 两条记录的 recall_keywords 交集 / 并集 > 0.5 视为重复 |
 | 保留策略 | 保留 quality_score 更高的 | 保留证据链更丰富的（evidence_event_ids 更多的） |
 
 ### 15.3 LongTermMemory 单例优化
