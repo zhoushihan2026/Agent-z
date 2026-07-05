@@ -390,20 +390,14 @@ def save_experience_node(state: dict) -> dict:
 
 ### 4.2 升格判断逻辑
 
-与 Hermes 原设计一致，升格判断**统一由 LLM 完成**，不做代码级的通道分类——代码只负责准备输入（候选记忆 + 已有候选记忆池 + 事件流），LLM 一次性判断哪些可以升格、属于哪条通道、是否需要同义合并。
+与 Hermes 原设计一致，升格判断**统一由 LLM 完成**——代码只负责准备输入（候选记忆 + 已有候选记忆池），LLM 一次性判断哪些可以升格、属于哪条通道、是否需要同义合并。
 
-#### 4.2.1 代码预处理（不调 LLM）
+不做代码级预筛（embedding 相似度预筛、失败证据标记），理由：
+- LLM 已经能看到候选池中所有 statement，自己就能判断"这两条是否重复"和"这条是否有失败证据"
+- Hermes 原设计也不做预筛，直接把所有候选丢给 LLM
+- 减少不必要的 embedding 调用，简化实现
 
-在调用 LLM 前，代码先做两件事：
-
-1. **通道二预筛**：计算新候选记忆的 statement embedding 与候选记忆池中已有候选的 embedding 余弦相似度，相似度 > 0.8 的标记为"可能重复"，作为 LLM 的参考输入
-2. **通道三标记**：检查 evidence_event_ids 中是否有 status=failed 的 act 事件，有的标记为"有工具失败证据"，作为 LLM 的参考输入
-
-这两步只做标记，不做最终判断——最终升格与否、走哪条通道，由 LLM 决定。
-
-#### 4.2.2 LLM 判断
-
-将新候选记忆、候选记忆池、预筛标记一起交给 LLM，让 LLM 一次性输出：
+LLM 一次性输出：
 - 哪些候选记忆可以升格
 - 升格通道是什么（三条选一）
 - 同义记忆是否需要合并，合并后的 statement 怎么写
@@ -421,10 +415,6 @@ def save_experience_node(state: dict) -> dict:
 
 已有候选记忆池：
 {existing_candidates_json}
-
-代码预筛标记（仅供参考）：
-- 可能重复的候选对：{similar_pairs}
-- 有工具失败证据的候选：{failure_evidence_ids}
 
 请判断哪些候选记忆可以升格为长期记忆。
 
@@ -514,13 +504,14 @@ def save_experience_node(state: dict) -> dict:
     "statement": "rag_search 搜不到财报数据时，应改用 web_search 获取",
     "durable": false,
     "evidence_event_ids": ["evt_sess_xxx_5"],
-    "embedding": [0.1, 0.2, ...],
     "timestamp": "2026-07-05T10:00:00",
     "promotion_count": 1
 }
 ```
 
-`promotion_count`：该候选记忆被检测到跨会话重复的次数。达到 2 次（即出现在 2 个不同会话中）即可通过通道二升格。
+`promotion_count`：该候选记忆被检测到跨会话重复的次数（由 LLM 在升格判断时更新）。达到 2 次（即出现在 2 个不同会话中）即可通过通道二升格。
+
+**注意**：候选记忆池**不存 embedding**。升格判断由 LLM 完成，LLM 自己能判断同义重复，不需要 embedding 预筛。这和 Hermes 原设计一致。
 
 候选记忆池的清理：保留最近 100 条候选记忆，超过时按时间戳删除最旧的。已升格的候选记忆标记为 `promoted` 而非删除，便于溯源。
 
@@ -1242,7 +1233,7 @@ class SessionCompressor:
 
 ```python
 class MemoryPromoter:
-    """升格判断：候选记忆通过三条通道之一升格为全局性记忆。"""
+    """升格判断：LLM 一次性判断候选记忆是否升格为全局性记忆。"""
 
     def promote(self, new_candidates: list[dict], session_id: str) -> list[dict]:
         """
@@ -1256,20 +1247,17 @@ class MemoryPromoter:
             升格后的全局性记忆记录列表
         """
 
-    def _check_channel_1(self, candidate: dict) -> bool:
-        """通道一：用户显式长期要求（durable=True）。"""
+    def _load_candidate_pool(self) -> list[dict]:
+        """从 candidate_memories.jsonl 加载已有候选记忆。"""
 
-    def _check_channel_2(self, candidate: dict) -> bool:
-        """通道二：跨会话重复（与候选记忆池中的已有候选语义相似）。"""
+    def _llm_promote(self, new_candidates: list[dict],
+                      existing_candidates: list[dict]) -> dict:
+        """调用 LLM 做升格判断（与 Hermes 02 脚本一致）。"""
 
-    def _check_channel_3(self, candidate: dict, events: list[dict]) -> bool:
-        """通道三：工具失败证据（evidence 中包含 failed 的 act 事件）。"""
-
-    def _merge_candidates(self, candidates: list[dict]) -> list[dict]:
-        """对同义候选记忆做合并。"""
-
-    def _update_candidate_pool(self, new_candidates: list[dict], promoted_ids: list[str]) -> None:
-        """更新候选记忆池：新增未升格的，标记已升格的。"""
+    def _update_candidate_pool(self, new_candidates: list[dict],
+                                promoted_ids: list[str],
+                                llm_result: dict) -> None:
+        """更新候选记忆池：新增未升格的，标记已升格的，更新 promotion_count。"""
 
     def _cleanup_pool(self) -> None:
         """清理超过 100 条的旧候选记忆。"""
@@ -1503,8 +1491,8 @@ class LongTermMemory:
 - [ ] LLM 能根据三条通道判断哪些候选记忆可以升格
 - [ ] 升格后的全局性记忆包含 category/statement/promotion_reason/evidence_event_ids/recall_keywords
 - [ ] 同义候选记忆被合并而非重复存储
-- [ ] 代码预筛标记（embedding 相似度 + 失败证据）作为 LLM 参考输入
 - [ ] 不满足升格条件的候选记忆进入候选池等待
+- [ ] 候选记忆池不存 embedding，升格判断完全由 LLM 完成
 
 ### 17.3 能力/方法记忆
 
