@@ -55,3 +55,9 @@ Thumbs.db
 # Large generated files
 *.bin
 *.faiss
+*.png
+*.jpg
+*.svg
+
+# References (external documents)
+references/
