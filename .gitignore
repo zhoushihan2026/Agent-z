@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -28,7 +28,9 @@ pnpm-debug.log*
 # Runtime data
 data/sessions.db
 data/long_term_memory/
+data/memory/
 data/reports/
+data/workspace/
 *.sqlite
 *.sqlite3
 
@@ -48,6 +50,7 @@ Thumbs.db
 .vscode/
 .idea/
 .cursor/
+.trae/
 
 # Large generated files
 *.bin
