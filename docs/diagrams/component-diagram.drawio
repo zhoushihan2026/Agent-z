@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" agent="manual">
   <diagram id="component-diagram" name="系统组件关系图">
-    <mxGraphModel dx="1107" dy="807" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="950" math="0" shadow="0">
+    <mxGraphModel dx="1238" dy="902" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="950" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -11,10 +11,10 @@
           <mxGeometry height="300" width="280" x="350" y="20" as="geometry" />
         </mxCell>
         <mxCell id="region-agent" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=10;strokeColor=#34D399;strokeWidth=1;dashed=1;dashPattern=8 4;fontSize=11;fontColor=#34D399;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;" value="Agent Core (LangGraph)" vertex="1">
-          <mxGeometry height="450" width="280" x="350" y="340" as="geometry" />
+          <mxGeometry height="480" width="280" x="350" y="340" as="geometry" />
         </mxCell>
         <mxCell id="region-memory" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=10;strokeColor=#A78BFA;strokeWidth=1;dashed=1;dashPattern=8 4;fontSize=11;fontColor=#A78BFA;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;" value="Memory System" vertex="1">
-          <mxGeometry height="740" width="310" x="650" y="20" as="geometry" />
+          <mxGeometry height="750" width="310" x="650" y="20" as="geometry" />
         </mxCell>
         <mxCell id="region-tools" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9A3412;fillOpacity=10;strokeColor=#FB923C;strokeWidth=1;dashed=1;dashPattern=8 4;fontSize=11;fontColor=#FB923C;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;" value="Tools" vertex="1">
           <mxGeometry height="450" width="300" x="980" y="20" as="geometry" />
@@ -55,8 +55,8 @@
         <mxCell id="edge-re-to-api" edge="1" parent="1" source="node-reactive" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#22D3EE;strokeWidth=1.5;endArrow=block;endFill=1;dashed=1;" target="node-fastapi" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="330" y="275" />
-              <mxPoint x="330" y="182" />
+              <mxPoint x="360" y="275" />
+              <mxPoint x="360" y="182" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -133,13 +133,12 @@
         <mxCell id="edge-ga" edge="1" parent="1" source="node-graph" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#34D399;strokeWidth=1.5;endArrow=block;endFill=1;" target="node-assess">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="edge-ar" edge="1" parent="1" source="node-assess" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#22D3EE;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="node-reactive">
+        <mxCell id="edge-ar" edge="1" parent="1" source="node-assess" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#22D3EE;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="node-reactive">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="620" y="480" />
               <mxPoint x="620" y="330" />
-              <mxPoint x="370" y="330" />
-              <mxPoint x="370" y="275" />
+              <mxPoint x="490" y="330" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -190,22 +189,27 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="node-save" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=40;strokeColor=#A78BFA;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" value="&lt;b&gt;save_experience&lt;/b&gt;&lt;br&gt;_should_compress?" vertex="1">
-          <mxGeometry height="40" width="160" x="410" y="730" as="geometry" />
+          <mxGeometry height="40" width="160" x="410" y="750" as="geometry" />
         </mxCell>
         <mxCell id="edge-syn-save" edge="1" parent="1" source="node-syn" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#A78BFA;strokeWidth=1.5;endArrow=block;endFill=1;" target="node-save">
-          <mxGeometry relative="1" as="geometry" />
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="550" y="730" />
+              <mxPoint x="490" y="730" />
+            </Array>
+          </mxGeometry>
         </mxCell>
         <mxCell id="edge-save-compress" edge="1" parent="1" source="node-save" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#A78BFA;strokeWidth=1.5;endArrow=block;endFill=1;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="node-compress">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="660" y="750" />
-              <mxPoint x="660" y="183" />
+              <mxPoint x="670" y="770" />
+              <mxPoint x="670" y="183" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="lbl-save-compress" connectable="0" parent="edge-save-compress" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#A78BFA;" value="async thread" vertex="1">
           <mxGeometry relative="1" x="-0.1" as="geometry">
-            <mxPoint y="1" as="offset" />
+            <mxPoint y="128" as="offset" />
           </mxGeometry>
         </mxCell>
         <mxCell id="edge-act-tools" edge="1" parent="1" source="node-act" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#FB923C;strokeWidth=1;endArrow=block;endFill=1;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="node-rag">
@@ -232,7 +236,7 @@
         </mxCell>
         <mxCell id="lbl-llm" connectable="0" parent="edge-llm-assess" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#94A3B8;" value="LLM调用" vertex="1">
           <mxGeometry relative="1" x="-0.1" as="geometry">
-            <mxPoint y="1" as="offset" />
+            <mxPoint y="65" as="offset" />
           </mxGeometry>
         </mxCell>
         <mxCell id="edge-recall-ltm" edge="1" parent="1" source="node-recall" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#A78BFA;strokeWidth=1;endArrow=block;endFill=1;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="node-ltm">
@@ -266,25 +270,25 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="legend-title" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;fontColor=#94A3B8;fontStyle=1;" value="图例" vertex="1">
-          <mxGeometry height="20" width="40" x="30" y="795" as="geometry" />
+          <mxGeometry height="20" width="40" x="25" y="855" as="geometry" />
         </mxCell>
         <mxCell id="leg-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#083344;fillOpacity=40;strokeColor=#22D3EE;strokeWidth=1;fontSize=8;fontColor=#22D3EE;" value="Frontend" vertex="1">
-          <mxGeometry height="22" width="55" x="75" y="790" as="geometry" />
+          <mxGeometry height="22" width="55" x="70" y="850" as="geometry" />
         </mxCell>
         <mxCell id="leg-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=40;strokeColor=#34D399;strokeWidth=1;fontSize=8;fontColor=#34D399;" value="Backend/Agent" vertex="1">
-          <mxGeometry height="22" width="85" x="135" y="790" as="geometry" />
+          <mxGeometry height="22" width="85" x="130" y="850" as="geometry" />
         </mxCell>
         <mxCell id="leg-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=40;strokeColor=#A78BFA;strokeWidth=1;fontSize=8;fontColor=#A78BFA;" value="Memory" vertex="1">
-          <mxGeometry height="22" width="55" x="220" y="790" as="geometry" />
+          <mxGeometry height="22" width="55" x="215" y="850" as="geometry" />
         </mxCell>
         <mxCell id="leg-4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9A3412;fillOpacity=30;strokeColor=#FB923C;strokeWidth=1;fontSize=8;fontColor=#FB923C;" value="Tools" vertex="1">
-          <mxGeometry height="22" width="40" x="280" y="790" as="geometry" />
+          <mxGeometry height="22" width="40" x="275" y="850" as="geometry" />
         </mxCell>
         <mxCell id="leg-5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;fillOpacity=50;strokeColor=#94A3B8;strokeWidth=1;fontSize=8;fontColor=#94A3B8;" value="External" vertex="1">
-          <mxGeometry height="22" width="50" x="325" y="790" as="geometry" />
+          <mxGeometry height="22" width="50" x="320" y="850" as="geometry" />
         </mxCell>
         <mxCell id="leg-note1" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=8;fontColor=#64748B;" value="实线 = 调用    虚线 = 数据流/异步" vertex="1">
-          <mxGeometry height="22" width="200" x="400" y="790" as="geometry" />
+          <mxGeometry height="22" width="200" x="400" y="850" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
