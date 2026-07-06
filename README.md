@@ -6,114 +6,21 @@
 
 ## 系统组件关系图
 
-> 点击查看交互版：[组件关系图](docs/diagrams/component-diagram.html) · [全流程图](docs/diagrams/flow-diagram.html)
+展示各模块之间的依赖与数据流向：
 
-```mermaid
-graph TB
-    subgraph External["External"]
-        LLM[("LLM<br/>通义千问")]
-        Embed[("Embedding<br/>text-embedding-v4")]
-        Eval[("LangSmith<br/>6维评估")]
-    end
+![系统组件关系图](docs/diagrams/component-diagram.png)
 
-    subgraph Frontend["Frontend + API"]
-        Web["Web Frontend<br/>React + SSE"] -->|"GET /api/chat"| FastAPI["FastAPI Backend"]
-    end
-
-    subgraph AgentCore["Agent Core (LangGraph)"]
-        FastAPI --> Graph["Agent Graph<br/>StateGraph"]
-        Graph --> Assess["assess<br/>模式分流"]
-        Assess -->|"deliberative"| MemInject["memory_inject<br/>FAISS召回→注入"]
-        Assess -->|"reactive"| ReactAgent["reactive_agent<br/>ReAct loop"]
-        MemInject --> Plan["plan"]
-        Plan --> Think["think"]
-        Think --> Act["act"]
-        Act --> Observe["observe"]
-        Observe -->|"循环"| Think
-        Observe -->|"收敛"| Synthesize["synthesize"]
-        Synthesize --> SaveExp["save_experience<br/>_should_compress?"]
-        ReactAgent -->|"tool_calls"| RTools["tools"]
-        RTools -->|"循环"| ReactAgent
-        ReactAgent -->|"无工具"| ExtractResp["extract_response"]
-    end
-
-    subgraph Memory["Memory System"]
-        SaveExp -->|"async thread"| Compressor["compressor<br/>会话压缩"]
-        Compressor --> Promoter["promoter<br/>升格判断"]
-        Promoter --> LTM[("long_term<br/>FAISS + JSONL")]
-        MemInject --> Recall["recall<br/>FAISS检索+rerank"]
-        Recall --> LTM
-        Compressor --> SessionMem[("session_memory/<br/>sess_xxx_task_N.json")]
-        ContextAsm["context_assembler"]
-        ProcMem["process_memory"]
-        SessionMgr["session_manager"]
-    end
-
-    subgraph Tools["Tools"]
-        RagSearch["rag_search"]
-        WebSearch["web_search"]
-        BrowserUse["browser_use"]
-        PyExec["python_execute"]
-        FileOp["file_operator"]
-        Terminate["terminate"]
-    end
-
-    Act -.-> Tools
-    RTools -.-> Tools
-    LLM -.-> Assess
-    LLM -.-> Think
-    LLM -.-> ReactAgent
-    Embed -.-> LTM
-    Embed -.-> Recall
-
-    style Frontend fill:rgba(8,51,68,0.3),stroke:#22d3ee
-    style AgentCore fill:rgba(6,78,59,0.3),stroke:#34d399
-    style Memory fill:rgba(76,29,149,0.3),stroke:#a78bfa
-    style Tools fill:rgba(251,146,60,0.3),stroke:#fb923c
-    style External fill:rgba(120,53,15,0.2),stroke:#fbbf24
-```
+> 源文件：[component-diagram.drawio](docs/diagrams/component-diagram.drawio)（用 draw.io 打开可编辑后导出 PNG）
 
 ---
 
 ## 系统全流程图
 
-```mermaid
-flowchart TD
-    User(("User<br/>研究问题")) --> Assess["assess<br/>模式分流"]
+展示 deliberative + reactive 双路径完整执行流程：
 
-    Assess -->|"deliberative"| MemInject["memory_inject<br/>FAISS召回注入"]
-    Assess -->|"reactive"| ReactAgent["reactive_agent<br/>轻量ReAct"]
+![系统全流程图](docs/diagrams/flow-diagram.png)
 
-    subgraph Deliberative["deliberative Path"]
-        MemInject --> Plan["plan<br/>任务拆解"]
-        Plan --> Think["think<br/>选择工具+参数"]
-        Think --> Act["act<br/>执行工具"]
-        Act --> Observe["observe<br/>解析结果+收敛判断"]
-        Observe -->|"继续循环"| Think
-        Observe -->|"收敛"| Synthesize["synthesize<br/>汇总生成报告"]
-    end
-
-    subgraph Reactive["reactive Path"]
-        ReactAgent -->|"has tool_calls"| RTools["tools<br/>执行工具"]
-        RTools -->|"返回结果"| ReactAgent
-        ReactAgent -->|"无tool_calls"| Extract["extract_response<br/>提取直接回答"]
-    end
-
-    Synthesize --> SaveExp["save_experience<br/>触发条件检测"]
-
-    subgraph MemoryAsync["Memory Pipeline (async)"]
-        SaveExp -->|"threading.Thread"| Compress["compressor<br/>事件流→结构化历史"]
-        Compress --> Promote["promoter<br/>LLM升格判断"]
-        Promote --> ExtractMethod["extract_capability_method<br/>方法卡抽取"]
-        ExtractMethod --> WriteLTM["add_promoted_record<br/>写入FAISS+JSONL"]
-    end
-
-    WriteLTM --> Done(("END"))
-
-    style Deliberative fill:rgba(6,78,59,0.15),stroke:#34d399
-    style Reactive fill:rgba(8,51,68,0.15),stroke:#22d3ee
-    style MemoryAsync fill:rgba(76,29,149,0.15),stroke:#a78bfa
-```
+> 源文件：[flow-diagram.drawio](docs/diagrams/flow-diagram.drawio)（用 draw.io 打开可编辑后导出 PNG）
 
 ---
 
@@ -248,12 +155,12 @@ pytest tests/agent/ -q
 
 ## 图表
 
-| 图表 | 文件 | 说明 |
+| 图表 | 源文件 | 说明 |
 |------|------|------|
-| 组件关系图 | [docs/diagrams/component-diagram.html](docs/diagrams/component-diagram.html) | 系统组件及其关系的交互式图表（支持 PNG/PDF 导出） |
-| 全流程图 | [docs/diagrams/flow-diagram.html](docs/diagrams/flow-diagram.html) | deliberative + reactive 双路径完整流程图 |
+| 组件关系图 | [component-diagram.drawio](docs/diagrams/component-diagram.drawio) | 系统组件及其依赖关系（5 个颜色区域：External / Frontend+API / Agent Core / Memory / Tools） |
+| 全流程图 | [flow-diagram.drawio](docs/diagrams/flow-diagram.drawio) | deliberative + reactive 双路径 + 异步记忆管线完整流程 |
 
-> 用浏览器打开 `.html` 文件，点击 **Export** 按钮可导出 PNG 或 PDF 格式。
+> 用 [draw.io](https://app.diagrams.net) 打开 `.drawio` 文件，确认无误后导出为同名 `.png` 即可嵌入 README。
 
 ## 许可证
 

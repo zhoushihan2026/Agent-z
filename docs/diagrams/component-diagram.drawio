@@ -1,0 +1,315 @@
+<mxfile host="drawio" modified="2026-07-06T00:00:00.000Z" agent="manual" version="24.0.0">
+  <diagram id="component-diagram" name="系统组件关系图">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="950" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- ====== 区域标签 ====== -->
+        <!-- External Region -->
+        <mxCell id="region-external" value="External" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#78350F;fillOpacity=10;strokeColor=#F59E0B;strokeWidth=1;dashed=1;dashPattern=8 4;fontSize=11;fontColor=#F59E0B;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="20" y="20" width="310" height="910" as="geometry"/>
+        </mxCell>
+
+        <!-- Frontend + API Region -->
+        <mxCell id="region-frontend" value="Frontend + API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#083344;fillOpacity=10;strokeColor=#22D3EE;strokeWidth=1;dashed=1;dashPattern=8 4;fontSize=11;fontColor=#22D3EE;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="350" y="20" width="280" height="300" as="geometry"/>
+        </mxCell>
+
+        <!-- Agent Core Region -->
+        <mxCell id="region-agent" value="Agent Core (LangGraph)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=10;strokeColor=#34D399;strokeWidth=1;dashed=1;dashPattern=8 4;fontSize=11;fontColor=#34D399;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="350" y="340" width="280" height="420" as="geometry"/>
+        </mxCell>
+
+        <!-- Memory System Region -->
+        <mxCell id="region-memory" value="Memory System" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=10;strokeColor=#A78BFA;strokeWidth=1;dashed=1;dashPattern=8 4;fontSize=11;fontColor=#A78BFA;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="650" y="20" width="310" height="740" as="geometry"/>
+        </mxCell>
+
+        <!-- Tools Region -->
+        <mxCell id="region-tools" value="Tools" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9A3412;fillOpacity=10;strokeColor=#FB923C;strokeWidth=1;dashed=1;dashPattern=8 4;fontSize=11;fontColor=#FB923C;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="980" y="20" width="300" height="500" as="geometry"/>
+        </mxCell>
+
+        <!-- Evaluation Region -->
+        <mxCell id="region-eval" value="Evaluation (LangSmith)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#78350F;fillOpacity=10;strokeColor=#F59E0B;strokeWidth=1;dashed=1;dashPattern=8 4;fontSize=11;fontColor=#F59E0B;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="20" y="730" width="310" height="200" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== 节点 ====== -->
+
+        <!-- Web Frontend -->
+        <mxCell id="node-web" value="&lt;b&gt;Web Frontend&lt;/b&gt;&lt;br&gt;React + SSE" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#083344;fillOpacity=40;strokeColor=#22D3EE;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="390" y="60" width="200" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- FastAPI Backend -->
+        <mxCell id="node-fastapi" value="&lt;b&gt;FastAPI Backend&lt;/b&gt;&lt;br&gt;GET /api/chat (SSE)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=40;strokeColor=#34D399;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="390" y="155" width="200" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- Agent Graph -->
+        <mxCell id="node-graph" value="&lt;b&gt;Agent Graph&lt;/b&gt;&lt;br&gt;StateGraph + compile()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=40;strokeColor=#34D399;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="390" y="370" width="200" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- assess -->
+        <mxCell id="node-assess" value="&lt;b&gt;assess&lt;/b&gt;&lt;br&gt;单次LLM调用完成分流" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#78350F;fillOpacity=30;strokeColor=#F59E0B;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="390" y="455" width="200" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- memory_inject -->
+        <mxCell id="node-mem-inject" value="&lt;b&gt;memory_inject&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=40;strokeColor=#34D399;strokeWidth=1;fontSize=9;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="370" y="535" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- plan -->
+        <mxCell id="node-plan" value="&lt;b&gt;plan&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=40;strokeColor=#34D399;strokeWidth=1;fontSize=9;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="480" y="535" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- think -->
+        <mxCell id="node-think" value="&lt;b&gt;think&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=40;strokeColor=#34D399;strokeWidth=1;fontSize=9;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="370" y="595" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- act -->
+        <mxCell id="node-act" value="&lt;b&gt;act&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=40;strokeColor=#34D399;strokeWidth=1;fontSize=9;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="480" y="595" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- observe -->
+        <mxCell id="node-observe" value="&lt;b&gt;observe&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=40;strokeColor=#34D399;strokeWidth=1;fontSize=9;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="370" y="655" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- synthesize -->
+        <mxCell id="node-syn" value="&lt;b&gt;synthesize&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=40;strokeColor=#34D399;strokeWidth=1;fontSize=9;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="480" y="655" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- reactive_agent -->
+        <mxCell id="node-reactive" value="&lt;b&gt;reactive_agent&lt;/b&gt;&lt;br&gt;ReAct loop" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#083344;fillOpacity=40;strokeColor=#22D3EE;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="390" y="250" width="200" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== Memory Components ====== -->
+        <mxCell id="node-recall" value="&lt;b&gt;recall (召回器)&lt;/b&gt;&lt;br&gt;FAISS向量检索 + LLM关键词" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=40;strokeColor=#A78BFA;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="690" y="60" width="230" height="55" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-compress" value="&lt;b&gt;compressor&lt;/b&gt;&lt;br&gt;会话压缩：事件流→候选记忆" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=40;strokeColor=#A78BFA;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="690" y="155" width="230" height="55" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-promote" value="&lt;b&gt;promoter&lt;/b&gt;&lt;br&gt;LLM升格判断 + 方法卡抽取" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=40;strokeColor=#A78BFA;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="690" y="250" width="230" height="55" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-ltm" value="&lt;b&gt;long_term&lt;/b&gt;&lt;br&gt;FAISS IndexFlatIP (1024维)&lt;br&gt;experiences.jsonl + faiss_index.bin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=40;strokeColor=#A78BFA;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="690" y="345" width="230" height="65" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-session" value="&lt;b&gt;session_memory/&lt;/b&gt;&lt;br&gt;sess_xxx_task_N.json" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=40;strokeColor=#A78BFA;strokeWidth=1;fontSize=9;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="690" y="450" width="230" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-procmem" value="&lt;b&gt;process_memory&lt;/b&gt;&lt;br&gt;过程记忆实时更新与召回" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=40;strokeColor=#A78BFA;strokeWidth=1;fontSize=9;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="690" y="530" width="230" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-context" value="&lt;b&gt;context_assembler&lt;/b&gt;&lt;br&gt;压缩摘要替换老轮次" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=40;strokeColor=#A78BFA;strokeWidth=1;fontSize=9;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="690" y="610" width="230" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-sessmgr" value="&lt;b&gt;session_manager&lt;/b&gt;&lt;br&gt;SQLite + assemble_context" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=40;strokeColor=#A78BFA;strokeWidth=1;fontSize=9;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="690" y="690" width="230" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== Tools ====== -->
+        <mxCell id="node-rag" value="&lt;b&gt;rag_search&lt;/b&gt;&lt;br&gt;企业知识库检索" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9A3412;fillOpacity=30;strokeColor=#FB923C;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="60" width="220" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-websearch" value="&lt;b&gt;web_search&lt;/b&gt;&lt;br&gt;互联网搜索" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9A3412;fillOpacity=30;strokeColor=#FB923C;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="125" width="220" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-browser" value="&lt;b&gt;browser_use&lt;/b&gt;&lt;br&gt;浏览器操作 (Playwright)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9A3412;fillOpacity=30;strokeColor=#FB923C;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="190" width="220" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-py" value="&lt;b&gt;python_execute&lt;/b&gt;&lt;br&gt;Python代码执行" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9A3412;fillOpacity=30;strokeColor=#FB923C;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="255" width="220" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-file" value="&lt;b&gt;file_operator&lt;/b&gt;&lt;br&gt;文件读写" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9A3412;fillOpacity=30;strokeColor=#FB923C;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="320" width="220" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-terminate" value="&lt;b&gt;terminate&lt;/b&gt;&lt;br&gt;任务终止 (主动收敛)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9A3412;fillOpacity=30;strokeColor=#FB923C;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="385" width="220" height="45" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== External Services ====== -->
+        <mxCell id="node-llm" value="&lt;b&gt;LLM (通义千问)&lt;/b&gt;&lt;br&gt;qwen-plus / qwen-max" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;fillOpacity=50;strokeColor=#94A3B8;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="60" y="70" width="230" height="55" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="node-embed" value="&lt;b&gt;Dashscope Embedding&lt;/b&gt;&lt;br&gt;text-embedding-v4 (1024维)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;fillOpacity=50;strokeColor=#94A3B8;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="60" y="160" width="230" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- LangSmith -->
+        <mxCell id="node-langsmith" value="&lt;b&gt;LangSmith&lt;/b&gt;&lt;br&gt;数据集 + 实验管理&lt;br&gt;6维度评估 (openevals)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#78350F;fillOpacity=30;strokeColor=#F59E0B;strokeWidth=1.5;fontSize=10;fontColor=#E2E8F0;" vertex="1" parent="1">
+          <mxGeometry x="60" y="770" width="230" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== 连线 ====== -->
+
+        <!-- Web → FastAPI -->
+        <mxCell id="edge-wf" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;endArrow=block;endFill=1;" edge="1" parent="1" source="node-web" target="node-fastapi">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- FastAPI → Graph -->
+        <mxCell id="edge-fg" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1.5;endArrow=block;endFill=1;" edge="1" parent="1" source="node-fastapi" target="node-graph">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Graph → assess -->
+        <mxCell id="edge-ga" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#34D399;strokeWidth=1.5;endArrow=block;endFill=1;" edge="1" parent="1" source="node-graph" target="node-assess">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- assess → reactive (right branch) -->
+        <mxCell id="edge-ar" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#22D3EE;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="node-assess" target="node-reactive">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- assess → memory_inject (down) -->
+        <mxCell id="edge-am" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#34D399;strokeWidth=1.5;endArrow=block;endFill=1;" edge="1" parent="1" source="node-assess" target="node-mem-inject">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="lbl-am" value="deliberative" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#34D399;" vertex="1" connectable="0" parent="edge-am">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint y="1" as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- memory_inject → plan -->
+        <mxCell id="edge-mp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#34D399;strokeWidth=1;endArrow=block;endFill=1;" edge="1" parent="1" source="node-mem-inject" target="node-plan">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- plan → think → act → observe -->
+        <mxCell id="edge-pt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#34D399;strokeWidth=1;endArrow=block;endFill=1;" edge="1" parent="1" source="node-plan" target="node-think">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-ta" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#34D399;strokeWidth=1;endArrow=block;endFill=1;" edge="1" parent="1" source="node-think" target="node-act">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-ao" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#34D399;strokeWidth=1;endArrow=block;endFill=1;" edge="1" parent="1" source="node-act" target="node-observe">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- observe → think (loop back) -->
+        <mxCell id="edge-ot" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F59E0B;strokeWidth=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="node-observe" target="node-think">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="350" y="675"/>
+              <mxPoint x="350" y="615"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lbl-ot" value="循环" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#F59E0B;" vertex="1" connectable="0" parent="edge-ot">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint y="1" as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- observe → synthesize -->
+        <mxCell id="edge-os" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#34D399;strokeWidth=1;endArrow=block;endFill=1;" edge="1" parent="1" source="node-observe" target="node-syn">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Tool call connections (dashed from act to tools) -->
+        <mxCell id="edge-act-tools" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#FB923C;strokeWidth=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="node-act" target="node-rag">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="640" y="615"/>
+              <mxPoint x="640" y="83"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lbl-act-tools" value="工具调用" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#FB923C;" vertex="1" connectable="0" parent="edge-act-tools">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint y="1" as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- LLM → assess, think, reactive (dashed) -->
+        <mxCell id="edge-llm-assess" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#94A3B8;strokeWidth=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="node-llm" target="node-assess">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="340" y="98"/>
+              <mxPoint x="340" y="480"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lbl-llm" value="LLM调用" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#94A3B8;" vertex="1" connectable="0" parent="edge-llm-assess">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint y="1" as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- recall → LTM -->
+        <mxCell id="edge-recall-ltm" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#A78BFA;strokeWidth=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="node-recall" target="node-ltm">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="670" y="88"/>
+              <mxPoint x="670" y="378"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lbl-recall" value="检索" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=8;fontColor=#A78BFA;" vertex="1" connectable="0" parent="edge-recall-ltm">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint y="1" as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- memory_inject → recall -->
+        <mxCell id="edge-mi-recall" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#A78BFA;strokeWidth=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="node-mem-inject" target="node-recall">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="650" y="555"/>
+              <mxPoint x="650" y="88"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- compressor → promoter → LTM -->
+        <mxCell id="edge-cp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#A78BFA;strokeWidth=1.5;endArrow=block;endFill=1;" edge="1" parent="1" source="node-compress" target="node-promote">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-pl" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#A78BFA;strokeWidth=1.5;endArrow=block;endFill=1;" edge="1" parent="1" source="node-promote" target="node-ltm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ====== 图例 ====== -->
+        <mxCell id="legend-title" value="图例" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;fontColor=#94A3B8;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="920" width="40" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg-1" value="Frontend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#083344;fillOpacity=40;strokeColor=#22D3EE;strokeWidth=1;fontSize=8;fontColor=#22D3EE;" vertex="1" parent="1">
+          <mxGeometry x="75" y="915" width="55" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg-2" value="Backend/Agent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#064E3B;fillOpacity=40;strokeColor=#34D399;strokeWidth=1;fontSize=8;fontColor=#34D399;" vertex="1" parent="1">
+          <mxGeometry x="135" y="915" width="80" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg-3" value="Memory" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;fillOpacity=40;strokeColor=#A78BFA;strokeWidth=1;fontSize=8;fontColor=#A78BFA;" vertex="1" parent="1">
+          <mxGeometry x="220" y="915" width="55" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg-4" value="Tools" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9A3412;fillOpacity=30;strokeColor=#FB923C;strokeWidth=1;fontSize=8;fontColor=#FB923C;" vertex="1" parent="1">
+          <mxGeometry x="280" y="915" width="40" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg-5" value="External" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;fillOpacity=50;strokeColor=#94A3B8;strokeWidth=1;fontSize=8;fontColor=#94A3B8;" vertex="1" parent="1">
+          <mxGeometry x="325" y="915" width="50" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg-note1" value="实线 = 调用    虚线 = 数据流/异步" style="text;html=1;align=left;verticalAlign=middle;fontSize=8;fontColor=#64748B;" vertex="1" parent="1">
+          <mxGeometry x="400" y="915" width="200" height="22" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
