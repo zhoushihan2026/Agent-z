@@ -275,3 +275,244 @@ class TestSave:
         # 应生成 3 个文件
         files = list(tmp_path.glob("sess_001_task_*.json"))
         assert len(files) == 3
+
+
+class TestCompressWithMockedLLM:
+    """测试 compress() 协调逻辑（spec 3.3 节），mock 掉 LLM 调用。"""
+
+    def _make_state(self):
+        """构造一个完整的 deliberative 任务状态。"""
+        return {
+            "session_id": "sess_compress_001",
+            "user_query": "分析中芯国际2024年财务表现",
+            "query_type": "analytical",
+            "processing_mode": "deliberative",
+            "is_finished": True,
+            "plan": [
+                {"step_index": 1, "description": "检索财报数据", "status": "completed", "tool_used": "rag_search"},
+                {"step_index": 2, "description": "计算指标", "status": "completed", "tool_used": "python_execute"},
+            ],
+            "think_history": ["需要先检索财报数据", "数据已充分，开始计算"],
+            "act_history": [
+                {"tool_name": "rag_search", "tool_args": {"query": "中芯国际 营收"}, "tool_result": "营收553亿元", "success": True},
+                {"tool_name": "python_execute", "tool_args": {"code": "print(553*1.1)"}, "tool_result": "608.3", "success": True},
+            ],
+            "observe_history": ["rag_search 返回营收数据", "python_execute 计算完成"],
+            "final_answer": "中芯国际2024年营收553亿元，同比增长10%。",
+            "react_loop_count": 4,
+        }
+
+    def test_compress返回完整结果字典(self, tmp_path, monkeypatch):
+        """compress 应返回包含 session_id/summary/candidate_memories 等字段的字典。"""
+        monkeypatch.setenv("MEMORY_SESSION_DIR", str(tmp_path))
+        compressor = SessionCompressor()
+
+        # mock LLM 压缩
+        mock_llm_result = {
+            "summary": "检索了中芯国际财报数据并计算了财务指标。",
+            "candidate_memories": [
+                {
+                    "kind": "fact",
+                    "statement": "中芯国际2024年营收553亿元",
+                    "durable": False,
+                    "evidence_event_ids": ["evt_sess_compress_001_1"],
+                }
+            ],
+            "process_memory": [],
+        }
+        monkeypatch.setattr(compressor, "_llm_compress", lambda events, query: mock_llm_result)
+
+        result = compressor.compress(self._make_state())
+
+        assert result["session_id"] == "sess_compress_001"
+        assert result["summary"] == mock_llm_result["summary"]
+        assert len(result["candidate_memories"]) == 1
+        assert result["candidate_memories"][0]["kind"] == "fact"
+
+    def test_compress包含quality_score(self, tmp_path, monkeypatch):
+        """compress 结果应包含 quality_score（spec 4.7 节，在 compressor 中计算）。"""
+        monkeypatch.setenv("MEMORY_SESSION_DIR", str(tmp_path))
+        compressor = SessionCompressor()
+        monkeypatch.setattr(
+            compressor, "_llm_compress",
+            lambda events, query: {"summary": "测试", "candidate_memories": [], "process_memory": []}
+        )
+
+        result = compressor.compress(self._make_state())
+
+        assert "quality_score" in result
+        assert 0.0 <= result["quality_score"] <= 1.0
+
+    def test_compress包含events字段(self, tmp_path, monkeypatch):
+        """compress 结果应包含 events 字段（事件流，供溯源）。"""
+        monkeypatch.setenv("MEMORY_SESSION_DIR", str(tmp_path))
+        compressor = SessionCompressor()
+        monkeypatch.setattr(
+            compressor, "_llm_compress",
+            lambda events, query: {"summary": "测试", "candidate_memories": [], "process_memory": []}
+        )
+
+        result = compressor.compress(self._make_state())
+
+        assert "events" in result
+        assert len(result["events"]) > 0
+        # 第一个事件应是 user 事件
+        assert result["events"][0]["role"] == "user"
+
+    def test_compress包含task_index(self, tmp_path, monkeypatch):
+        """compress 结果应包含 task_index（按已有文件数确定）。"""
+        monkeypatch.setenv("MEMORY_SESSION_DIR", str(tmp_path))
+        compressor = SessionCompressor()
+        monkeypatch.setattr(
+            compressor, "_llm_compress",
+            lambda events, query: {"summary": "测试", "candidate_memories": [], "process_memory": []}
+        )
+
+        result = compressor.compress(self._make_state())
+
+        assert "task_index" in result
+        assert result["task_index"] == 0  # 无已有文件，应为 0
+
+    def test_compress已有文件时task_index递增(self, tmp_path, monkeypatch):
+        """已有同 session 的压缩文件时，task_index 应递增。"""
+        monkeypatch.setenv("MEMORY_SESSION_DIR", str(tmp_path))
+        compressor = SessionCompressor()
+        monkeypatch.setattr(
+            compressor, "_llm_compress",
+            lambda events, query: {"summary": "测试", "candidate_memories": [], "process_memory": []}
+        )
+
+        # 先写入 2 个已有文件
+        for i in range(2):
+            existing = {
+                "session_id": "sess_compress_001",
+                "task_index": i,
+                "user_query": f"旧问题{i}",
+                "query_type": "analytical",
+                "processing_mode": "deliberative",
+                "is_finished": True,
+                "timestamp": "2026-07-05T10:00:00",
+                "compression": {"summary": f"旧摘要{i}", "candidate_memories": [], "process_memory": []},
+            }
+            compressor.save(existing)
+
+        result = compressor.compress(self._make_state())
+
+        assert result["task_index"] == 2  # 已有 2 个文件，新 task_index 应为 2
+
+    def test_compress包含timestamp和元信息(self, tmp_path, monkeypatch):
+        """compress 结果应包含 timestamp、user_query、query_type 等元信息。"""
+        monkeypatch.setenv("MEMORY_SESSION_DIR", str(tmp_path))
+        compressor = SessionCompressor()
+        monkeypatch.setattr(
+            compressor, "_llm_compress",
+            lambda events, query: {"summary": "测试", "candidate_memories": [], "process_memory": []}
+        )
+
+        state = self._make_state()
+        result = compressor.compress(state)
+
+        assert "timestamp" in result
+        assert result["user_query"] == state["user_query"]
+        assert result["query_type"] == state["query_type"]
+        assert result["processing_mode"] == state["processing_mode"]
+        assert result["is_finished"] == state["is_finished"]
+
+    def test_compress结果可直接传给save(self, tmp_path, monkeypatch):
+        """compress 返回的结果应可直接传给 save() 存储。"""
+        monkeypatch.setenv("MEMORY_SESSION_DIR", str(tmp_path))
+        compressor = SessionCompressor()
+        monkeypatch.setattr(
+            compressor, "_llm_compress",
+            lambda events, query: {"summary": "测试摘要", "candidate_memories": [], "process_memory": []}
+        )
+
+        result = compressor.compress(self._make_state())
+        compressor.save(result)
+
+        # 验证文件已写入
+        files = list(tmp_path.glob("sess_compress_001_task_*.json"))
+        assert len(files) == 1
+
+
+class TestLlmCompress:
+    """测试 _llm_compress() LLM 调用逻辑（spec 3.4 节），mock get_light_llm。"""
+
+    def _make_events(self):
+        """构造事件流。"""
+        return [
+            {"event_id": "evt_sess_001_0", "session_id": "sess_001", "role": "user", "text": "分析中芯国际财务"},
+            {"event_id": "evt_sess_001_1", "session_id": "sess_001", "role": "think", "text": "需要检索财报"},
+            {"event_id": "evt_sess_001_2", "session_id": "sess_001", "role": "act", "text": "rag_search({}) -> 营收553亿", "tool": "rag_search", "status": "success"},
+            {"event_id": "evt_sess_001_3", "session_id": "sess_001", "role": "observe", "text": "检索到营收数据"},
+        ]
+
+    def test_llm_compress返回解析后的字典(self, monkeypatch):
+        """_llm_compress 应调用 LLM 并返回解析后的 JSON 字典。"""
+        compressor = SessionCompressor()
+
+        # mock LLM 返回
+        mock_response = type("MockResponse", (), {"content": '{"summary": "检索了财报数据", "candidate_memories": [], "process_memory": []}'})()
+        monkeypatch.setattr(
+            "memory.compressor.get_light_llm",
+            lambda: type("MockLLM", (), {"invoke": lambda self, prompt: mock_response})()
+        )
+
+        result = compressor._llm_compress(self._make_events(), "分析中芯国际财务")
+
+        assert result["summary"] == "检索了财报数据"
+        assert "candidate_memories" in result
+        assert "process_memory" in result
+
+    def test_llm_compress使用COMPRESSION_PROMPT模板(self, monkeypatch):
+        """_llm_compress 应使用 COMPRESSION_PROMPT 模板格式化。"""
+        compressor = SessionCompressor()
+
+        captured_prompt = []
+        mock_response = type("MockResponse", (), {"content": '{"summary": "", "candidate_memories": [], "process_memory": []}'})()
+        def mock_invoke(self, prompt):
+            captured_prompt.append(prompt)
+            return mock_response
+        monkeypatch.setattr(
+            "memory.compressor.get_light_llm",
+            lambda: type("MockLLM", (), {"invoke": mock_invoke})()
+        )
+
+        compressor._llm_compress(self._make_events(), "分析中芯国际财务")
+
+        # 验证 prompt 包含事件流 JSON
+        assert "对话事件流" in captured_prompt[0]
+        assert "evt_sess_001_0" in captured_prompt[0]
+
+    def test_llm_compress解析异常时返回空结构(self, monkeypatch):
+        """LLM 返回非 JSON 时应返回空结构，不抛异常。"""
+        compressor = SessionCompressor()
+
+        mock_response = type("MockResponse", (), {"content": "这不是有效的 JSON"})()
+        monkeypatch.setattr(
+            "memory.compressor.get_light_llm",
+            lambda: type("MockLLM", (), {"invoke": lambda self, prompt: mock_response})()
+        )
+
+        result = compressor._llm_compress(self._make_events(), "查询")
+
+        assert result["summary"] == ""
+        assert result["candidate_memories"] == []
+        assert result["process_memory"] == []
+
+    def test_llm_compress调用异常时返回空结构(self, monkeypatch):
+        """LLM 调用异常时应返回空结构，不抛异常。"""
+        compressor = SessionCompressor()
+
+        def mock_invoke(self, prompt):
+            raise Exception("LLM 不可用")
+        monkeypatch.setattr(
+            "memory.compressor.get_light_llm",
+            lambda: type("MockLLM", (), {"invoke": mock_invoke})()
+        )
+
+        result = compressor._llm_compress(self._make_events(), "查询")
+
+        assert result["summary"] == ""
+        assert result["candidate_memories"] == []
+        assert result["process_memory"] == []

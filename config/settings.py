@@ -103,7 +103,7 @@ class Settings:
     @property
     def LONG_TERM_SIMILARITY_THRESHOLD(self) -> float:
         """相似度低于此值不注入。"""
-        return float(os.getenv("LONG_TERM_SIMILARITY_THRESHOLD", "0.7"))
+        return float(os.getenv("LONG_TERM_SIMILARITY_THRESHOLD", "0.45"))
 
     @property
     def LONG_TERM_MAX_INJECT_TOKENS(self) -> int:
@@ -136,6 +136,56 @@ class Settings:
         return int(os.getenv("MEMORY_MAX_CANDIDATES", "100"))
 
     @property
+    def MEMORY_RECALL_CANDIDATE_TOP_K(self) -> int:
+        """FAISS 初检候选数（rerank 前，V2 新增，spec 13.1 节）。"""
+        return int(os.getenv("MEMORY_RECALL_CANDIDATE_TOP_K", "10"))
+
+    @property
+    def MEMORY_RECALL_MIN_SIMILARITY(self) -> float:
+        """FAISS 候选最低相似度门槛，低于则跳过 rerank（V2 新增，spec 13.1 节）。"""
+        return float(os.getenv("MEMORY_RECALL_MIN_SIMILARITY", "0.5"))
+
+    @property
+    def MEMORY_RECALL_KEYWORD_WEIGHT(self) -> float:
+        """关键词 rerank 权重（V2 新增，spec 13.1 节）。"""
+        return float(os.getenv("MEMORY_RECALL_KEYWORD_WEIGHT", "0.4"))
+
+    @property
+    def MEMORY_RECALL_SIMILARITY_WEIGHT(self) -> float:
+        """向量相似度权重（V2 新增，spec 13.1 节）。"""
+        return float(os.getenv("MEMORY_RECALL_SIMILARITY_WEIGHT", "0.6"))
+
+    @property
+    def CONTEXT_ASSEMBLER_MAX_TOKENS(self) -> int:
+        """上下文包最大 token 数（V2 新增，spec 13.1 节）。"""
+        return int(os.getenv("CONTEXT_ASSEMBLER_MAX_TOKENS", "80000"))
+
+    @property
+    def CONTEXT_ASSEMBLER_KEEP_RECENT_ROUNDS(self) -> int:
+        """最近几轮保留原始消息（V2 新增，spec 13.1 节）。"""
+        return int(os.getenv("CONTEXT_ASSEMBLER_KEEP_RECENT_ROUNDS", "3"))
+
+    @property
+    def CONTEXT_ASSEMBLER_MIN_ROUNDS(self) -> int:
+        """最少保留的轮次数（V2 新增，spec 13.1 节）。"""
+        return int(os.getenv("CONTEXT_ASSEMBLER_MIN_ROUNDS", "5"))
+
+    @property
+    def MEMORY_PROMOTION_REPEAT_THRESHOLD(self) -> int:
+        """跨会话重复多少次可升格（通道二，LLM 参考信号，V2 新增，spec 13.1 节）。"""
+        return int(os.getenv("MEMORY_PROMOTION_REPEAT_THRESHOLD", "2"))
+
+    @property
+    def MEMORY_INJECT_MAX_SINGLE_TOKENS(self) -> int:
+        """单条经验注入最大 token（V2 新增，spec 13.1 节，从 150 上调至 200）。"""
+        return int(os.getenv("MEMORY_INJECT_MAX_SINGLE_TOKENS", "200"))
+
+    @property
+    def MEMORY_INJECT_MAX_TOTAL_TOKENS(self) -> int:
+        """总注入 token 上限（V2 新增，spec 13.1 节，从 400 上调至 500）。"""
+        return int(os.getenv("MEMORY_INJECT_MAX_TOTAL_TOKENS", "500"))
+
+    @property
     def SHORT_TERM_MAX_TOKENS(self) -> int:
         """短期记忆传入 LLM 前的最大 token 数（phase2 新增）。"""
         return int(os.getenv("SHORT_TERM_MAX_TOKENS", "80000"))
@@ -162,8 +212,8 @@ class Settings:
 
     @property
     def BROWSER_TIMEOUT(self) -> int:
-        """浏览器页面加载超时秒数（phase2 新增）。"""
-        return int(os.getenv("BROWSER_TIMEOUT", "30"))
+        """浏览器页面加载超时秒数（phase2 新增，默认 90 秒避免慢速页面超时）。"""
+        return int(os.getenv("BROWSER_TIMEOUT", "90"))
 
     @property
     def BROWSER_MAX_CONTENT_LENGTH(self) -> int:

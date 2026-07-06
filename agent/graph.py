@@ -3,7 +3,10 @@
 
 对应 spec 2.2.3 节图结构：组装 assess → reactive/deliberative 双路径图。
 路由函数为纯函数，便于单元测试；build_graph 编译完整图供 FastAPI 调用。
+
+V2 新增（spec 11.2 节）：save_experience_node 重写为有条件异步触发。
 """
+import threading
 from typing import Literal
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -62,41 +65,129 @@ def memory_inject_node(state: dict) -> dict:
     finally:
         if 'ltm' in dir():
             try:
-                ltm.close()
+                ltm.close(save=False)  # 只读操作不保存，避免覆盖异步线程的新增数据
             except Exception:
                 pass
 
 
 # ---------------------------------------------------------------------------
-# 长期经验保存节点（phase2 新增，spec 3.3.6 节）
+# 长期经验保存节点（V2 重写：有条件异步触发，spec 11.2 节）
 # ---------------------------------------------------------------------------
-def save_experience_node(state: dict) -> dict:
-    """经验保存节点：synthesize 后将高质量分析经验存入长期记忆。
 
-    仅当 is_finished=True 时触发。过滤规则（spec 3.3.5 节）由
-    LongTermMemory.add_experience 内部执行。
+# 用户长期要求的关键词（spec 3.1.1 节）
+_DURABLE_KEYWORDS = ["以后", "每次都", "一直", "总是要", "记住"]
+
+
+def _should_compress(state: dict) -> bool:
+    """判断是否需要触发会话压缩（纯代码判断，不调 LLM）。
+
+    spec 3.1.1 节触发条件（满足任一即触发）：
+    - 路径1：deliberative + is_finished + (工具失败 / 过程足够复杂 / 用户有长期要求)
+    - 路径2：reactive 模式下捕获 durable 信号（用户偏好不能丢）
 
     参数:
         state: 当前 AgentState
 
     返回:
-        空字典（不修改状态）
+        True 表示需要触发压缩
     """
-    if not state.get("is_finished"):
+    processing_mode = state.get("processing_mode", "")
+
+    # 收集用户消息中的 durable 信号
+    user_messages = [m for m in state.get("messages", []) if getattr(m, "type", "") == "human"]
+    has_durable_signal = any(
+        kw in (msg.content if isinstance(msg.content, str) else str(msg.content))
+        for msg in user_messages
+        for kw in _DURABLE_KEYWORDS
+    )
+
+    # 路径1：标准路径（deliberative + 完成 + 有价值条件）
+    if processing_mode == "deliberative" and state.get("is_finished"):
+        act_history = state.get("act_history", [])
+        has_failure = any(not act.get("success", True) for act in act_history)
+        has_enough_activity = len(act_history) >= 3
+
+        if has_failure or has_enough_activity or has_durable_signal:
+            return True
+
+    # 路径2：reactive 中的 durable 信号单独捕获
+    if processing_mode == "reactive" and has_durable_signal:
+        return True
+
+    return False
+
+
+def save_experience_node(state: dict) -> dict:
+    """经验保存节点：有条件地异步触发会话压缩和升格。
+
+    V2 重写（spec 11.2 节）：
+    - 轻量检测（_should_compress）= 对话钩子
+    - 异步线程 = 投递整理任务
+    - 压缩和升格不在图上作为独立节点，而是在后台线程中串行执行
+
+    参数:
+        state: 当前 AgentState
+
+    返回:
+        空字典（不修改状态，压缩在后台异步执行）
+    """
+    if not _should_compress(state):
         return {}
 
-    try:
-        from memory.long_term import LongTermMemory
-        from config.settings import settings
+    # 复制必要的状态数据（避免引用原图状态）
+    state_snapshot = dict(state)
 
-        ltm = LongTermMemory(
-            index_path=settings.LONG_TERM_INDEX_PATH,
-            embedding_provider=settings.EMBEDDING_PROVIDER,
-        )
-        ltm.add_experience(state)
-        ltm.close()
-    except Exception:
-        pass
+    def _async_compress_and_promote():
+        """后台线程：执行会话压缩 → 升格判断 → 写入全局性记忆。
+
+        spec 3.1.2 节：压缩失败不影响主流程，静默处理。
+        """
+        try:
+            from memory.compressor import SessionCompressor
+            from memory.promoter import MemoryPromoter
+            from memory.long_term import LongTermMemory
+            from config.settings import settings
+
+            # 第一步：会话压缩
+            compressor = SessionCompressor()
+            compressed = compressor.compress(state_snapshot)
+            compressor.save(compressed)
+
+            # 第二步：升格判断
+            promoted_records = []
+            if compressed.get("candidate_memories"):
+                promoter = MemoryPromoter()
+                promoted_records = promoter.promote(
+                    compressed["candidate_memories"],
+                    compressed["session_id"],
+                )
+                # 第三步：写入全局性记忆（升格后的记录）
+                if promoted_records:
+                    ltm = LongTermMemory(
+                        index_path=settings.LONG_TERM_INDEX_PATH,
+                        embedding_provider=settings.EMBEDDING_PROVIDER,
+                    )
+                    for record in promoted_records:
+                        ltm.add_promoted_record(record)
+                    ltm.close()
+
+                # 第四步：方法卡抽取（在升格写入后执行，LTM 已更新）
+                method_cards = promoter.extract_capability_method(compressed)
+                if method_cards:
+                    ltm = LongTermMemory(
+                        index_path=settings.LONG_TERM_INDEX_PATH,
+                        embedding_provider=settings.EMBEDDING_PROVIDER,
+                    )
+                    for card in method_cards:
+                        ltm.add_promoted_record(card)
+                    ltm.close()
+        except Exception as e:
+            # 压缩失败不影响主流程（spec 3.1.2 节），但记录日志便于排查
+            logger.error("异步压缩/升格线程异常: %s", e, exc_info=True)
+
+    # 启动后台线程（daemon=True 确保进程退出时自动终止）
+    t = threading.Thread(target=_async_compress_and_promote, daemon=True)
+    t.start()
 
     return {}
 

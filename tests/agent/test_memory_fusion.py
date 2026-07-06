@@ -163,3 +163,163 @@ class TestInjectMemory:
         experiences = [{"task_type": "analytical", "query": "x", "approach": "y", "tools_used": [], "conclusion": "z", "quality_score": 0.8}]
         result = inject_memory(messages, experiences, processing_mode="deliberative")
         assert len(result) > len(messages)
+
+
+class TestBuildMemorySystemMessageV2:
+    """测试 V2 格式经验的注入（spec 9.2 节）。
+
+    V2 格式包含 category/statement/promotion_reason/evidence_event_ids 字段，
+    区别于旧格式（task_type/query/approach/conclusion）。
+    """
+
+    def test_V2格式经验返回system_message(self):
+        """V2 格式经验应返回一条 SystemMessage。"""
+        from agent.utils.memory_fusion import build_memory_system_message
+
+        experiences = [
+            {
+                "category": "user_preference",
+                "statement": "以后输出分析报告要附数据来源",
+                "promotion_reason": "explicit_user_instruction",
+                "evidence_event_ids": ["evt_sess_001_3"],
+            },
+        ]
+        msg = build_memory_system_message("分析财务", experiences)
+        assert msg is not None
+        assert isinstance(msg, SystemMessage)
+
+    def test_V2格式包含category中文标签(self):
+        """V2 格式应包含 category 的中文标签（如"用户偏好"）。"""
+        from agent.utils.memory_fusion import build_memory_system_message
+
+        experiences = [
+            {
+                "category": "user_preference",
+                "statement": "以后输出分析报告要附数据来源",
+                "promotion_reason": "explicit_user_instruction",
+                "evidence_event_ids": [],
+            },
+        ]
+        msg = build_memory_system_message("查询", experiences)
+        assert "用户偏好" in msg.content
+
+    def test_V2格式包含升格原因中文标签(self):
+        """V2 格式应包含升格原因的中文标签（如"用户明确要求"）。"""
+        from agent.utils.memory_fusion import build_memory_system_message
+
+        experiences = [
+            {
+                "category": "project_rule",
+                "statement": "rag_search 搜不到时改用 web_search",
+                "promotion_reason": "tool_failure_evidence",
+                "evidence_event_ids": ["evt_001"],
+            },
+        ]
+        msg = build_memory_system_message("查询", experiences)
+        assert "工具失败后形成的修正规则" in msg.content
+
+    def test_V2格式包含证据溯源数量(self):
+        """V2 格式应包含证据事件溯源数量。"""
+        from agent.utils.memory_fusion import build_memory_system_message
+
+        experiences = [
+            {
+                "category": "stable_fact",
+                "statement": "中芯国际2024年营收553亿元",
+                "promotion_reason": "repeated_across_sessions",
+                "evidence_event_ids": ["evt_001", "evt_002", "evt_003"],
+            },
+        ]
+        msg = build_memory_system_message("查询", experiences)
+        assert "3 条事件溯源" in msg.content
+
+    def test_V2格式四类category中文标签(self):
+        """V2 格式应正确显示四类 category 的中文标签。"""
+        from agent.utils.memory_fusion import build_memory_system_message
+
+        experiences = [
+            {"category": "user_preference", "statement": "偏好", "promotion_reason": "", "evidence_event_ids": []},
+            {"category": "project_rule", "statement": "规则", "promotion_reason": "", "evidence_event_ids": []},
+            {"category": "stable_fact", "statement": "事实", "promotion_reason": "", "evidence_event_ids": []},
+            {"category": "capability_method", "statement": "方法", "promotion_reason": "", "evidence_event_ids": []},
+        ]
+        msg = build_memory_system_message("查询", experiences)
+        assert "用户偏好" in msg.content
+        assert "项目规则" in msg.content
+        assert "稳定事实" in msg.content
+        assert "能力/方法" in msg.content
+
+    def test_V2格式能力方法展示方法卡信息(self):
+        """V2 格式 capability_method 应展示方法卡信息（applies_when/method/validation/failure_signals）。"""
+        from agent.utils.memory_fusion import build_memory_system_message
+
+        experiences = [
+            {
+                "category": "capability_method",
+                "statement": "财务分析标准流程",
+                "promotion_reason": "repeated_across_sessions",
+                "evidence_event_ids": ["evt_001"],
+                "applies_when": "分析某公司财务表现",
+                "method": "rag_search -> python_execute -> 综合报告",
+                "validation": "报告包含具体数字且有来源标注",
+                "failure_signals": ["工具连续返回空结果", "数字无来源"],
+            },
+        ]
+        msg = build_memory_system_message("分析财务", experiences)
+        assert "适用场景" in msg.content
+        assert "分析某公司财务表现" in msg.content
+        assert "步骤" in msg.content
+        assert "验证" in msg.content
+        assert "失败信号" in msg.content
+        assert "工具连续返回空结果" in msg.content
+
+    def test_V2格式注入前缀文本为仅供参考(self):
+        """V2 格式注入前缀应包含"仅供当前任务参考，不能直接作为当前事实数据"。"""
+        from agent.utils.memory_fusion import build_memory_system_message
+
+        experiences = [
+            {"category": "stable_fact", "statement": "测试", "promotion_reason": "", "evidence_event_ids": []},
+        ]
+        msg = build_memory_system_message("查询", experiences)
+        assert "仅供当前任务参考" in msg.content
+        assert "不能直接作为当前事实数据" in msg.content
+
+    def test_V2和旧格式混合注入(self):
+        """V2 和旧格式混合时应分别按各自格式渲染。"""
+        from agent.utils.memory_fusion import build_memory_system_message
+
+        experiences = [
+            {
+                "category": "user_preference",
+                "statement": "以后附数据来源",
+                "promotion_reason": "explicit_user_instruction",
+                "evidence_event_ids": [],
+            },
+            {
+                "task_type": "analytical",
+                "query": "分析XX公司",
+                "approach": "RAG检索",
+                "tools_used": ["rag_search"],
+                "conclusion": "营收增长",
+                "quality_score": 0.85,
+            },
+        ]
+        msg = build_memory_system_message("查询", experiences)
+        # V2 格式应显示"用户偏好"
+        assert "用户偏好" in msg.content
+        # 旧格式应显示 task_type 标签
+        assert "analytical" in msg.content
+
+    def test_V2格式多条经验编号正确(self):
+        """V2 格式多条经验应按编号列出。"""
+        from agent.utils.memory_fusion import build_memory_system_message
+
+        experiences = [
+            {"category": "user_preference", "statement": "规则A", "promotion_reason": "", "evidence_event_ids": []},
+            {"category": "project_rule", "statement": "规则B", "promotion_reason": "", "evidence_event_ids": []},
+            {"category": "stable_fact", "statement": "事实C", "promotion_reason": "", "evidence_event_ids": []},
+        ]
+        msg = build_memory_system_message("查询", experiences)
+        assert "1." in msg.content
+        assert "2." in msg.content
+        assert "3." in msg.content

@@ -323,6 +323,15 @@ def think_node(state: dict) -> dict:
         time_context=time_context,
     )
 
+    # V2 新增：过程记忆注入 THINK_PROMPT（spec 11.5 节）
+    # 检查 open 状态的过程记忆，追加到 prompt 末尾
+    from memory.process_memory import ProcessMemoryManager
+    pm_manager = ProcessMemoryManager()
+    process_memory = state.get("process_memory", [])
+    process_context = pm_manager.build_process_context(process_memory)
+    if process_context:
+        prompt = prompt + "\n\n" + process_context
+
     try:
         llm = get_llm()
         llm_with_tools = llm.bind_tools(get_tools())

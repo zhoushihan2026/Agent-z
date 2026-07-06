@@ -6,6 +6,7 @@
 - 工具成功返回数据 → 推进 current_step_index（每步最多对应 1 次有效工具调用）
 - 检测 terminate，标记 is_finished 并补齐步骤索引
 - 推进 react_loop_count 计数
+- V2 新增：过程记忆实时更新（工具失败新增 open，工具成功关闭同名 open）
 """
 import logging
 
@@ -77,6 +78,24 @@ def observe_node(state: dict) -> dict:
     plan = list(state.get("plan", []))
     current_step_index = state.get("current_step_index", 0)
 
+    # V2 新增：过程记忆实时更新（spec 11.4 节）
+    # 工具失败时新增 open 过程记忆；工具成功时关闭同名 open 过程记忆
+    from memory.process_memory import ProcessMemoryManager
+    pm_manager = ProcessMemoryManager()
+    process_memory = list(state.get("process_memory", []))
+    session_id = state.get("session_id", "unknown")
+    act_history = state.get("act_history", [])
+    if tool_name and not success:
+        process_memory = pm_manager.on_tool_failure(
+            process_memory,
+            session_id,
+            tool_name,
+            str(tool_result_raw)[:100],
+            len(act_history),
+        )
+    elif tool_name and success and tool_name != "terminate":
+        process_memory = pm_manager.on_tool_success(process_memory, tool_name)
+
     # 本轮没有工具调用（思考节点纯推理或直接给出结论）
     # 判断当前步骤是否已完成：如果当前步骤未完成，检查是否为合法的纯推理轮
     if not tool_name:
@@ -118,6 +137,8 @@ def observe_node(state: dict) -> dict:
                 "observe_history": observe_history + [observation],
                 "plan": new_plan,
                 "current_step_index": new_step_index,
+                "current_tool_call": None,
+                "process_memory": process_memory,
             }
         elif step_incomplete:
             # 当前步骤未完成，且不是合法纯推理轮 → 不允许结束，继续循环
@@ -129,6 +150,8 @@ def observe_node(state: dict) -> dict:
                 "current_observation": observation,
                 "react_loop_count": react_loop_count + 1,
                 "observe_history": observe_history + [observation],
+                "current_tool_call": None,
+                "process_memory": process_memory,
             }
         else:
             # 当前步骤已完成或索引越界，检查是否所有步骤都已完成
@@ -146,6 +169,8 @@ def observe_node(state: dict) -> dict:
                     "react_loop_count": react_loop_count + 1,
                     "observe_history": observe_history + [observation],
                     "is_finished": True,
+                    "current_tool_call": None,
+                    "process_memory": process_memory,
                 }
             else:
                 observation = "思考节点未发起新的工具调用，但仍有步骤未完成，继续循环。"
@@ -153,6 +178,8 @@ def observe_node(state: dict) -> dict:
                     "current_observation": observation,
                     "react_loop_count": react_loop_count + 1,
                     "observe_history": observe_history + [observation],
+                    "current_tool_call": None,
+                    "process_memory": process_memory,
                 }
 
     # 截断过长的工具结果，用于前端展示和 think 上下文
@@ -186,6 +213,8 @@ def observe_node(state: dict) -> dict:
         # 向前传递 current_tool_call，确保 SSE 的 observe 事件能读取
         # 正确的 tool_name / tool_call_id / success，与 act 事件配对
         "current_tool_call": tool_call if tool_call else None,
+        # V2 新增：过程记忆（已含本轮工具成功/失败的更新）
+        "process_memory": process_memory,
     }
 
     if is_terminated:
@@ -226,6 +255,7 @@ def observe_node(state: dict) -> dict:
                     "react_loop_count": new_react_loop_count,
                     "observe_history": new_observe_history + [observation],
                     "current_tool_call": tool_call if tool_call else None,
+                    "process_memory": process_memory,
                 }
 
         # 工具返回有效数据，当前步骤完成，推进到下一步

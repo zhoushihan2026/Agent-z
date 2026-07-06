@@ -356,6 +356,16 @@ export default function App() {
             case "synthesize": {
               agent.synthesizeContent = event.content.content;
               agent.sources = event.content.sources;
+              // reactive 模式未调用工具直接回答时，没有 observe 事件关闭 isRunning，
+              // 此处将仍在运行中的最后一步标记为完成
+              if (agent.reactSteps.length > 0) {
+                const lastIdx = agent.reactSteps.length - 1;
+                if (agent.reactSteps[lastIdx].isRunning && agent.reactSteps[lastIdx].observeContent === undefined) {
+                  agent.reactSteps = agent.reactSteps.map((s, idx) =>
+                    idx === lastIdx ? { ...s, isRunning: false } : s,
+                  );
+                }
+              }
               break;
             }
             case "download": {

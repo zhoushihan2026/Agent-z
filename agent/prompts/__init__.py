@@ -168,6 +168,186 @@ SYNTHESIZE_PROMPT = """你是一个深度研报分析 Agent 的报告生成模�
 直接输出报告内容，不要额外解释。"""
 
 
+# ============================================================================
+# V2 记忆系统 Prompt 模板（spec 3.4 / 4.3 / 5.3 / 8.3.2 节）
+# 所有 Prompt 使用 gpt-3.5-turbo，输出严格 JSON 格式
+# ============================================================================
+
+# 会话压缩 Prompt（spec 3.4 节）
+# 输入：事件流 JSON；输出：summary + candidate_memories + process_memory
+COMPRESSION_PROMPT = """你是一个记忆压缩模块。请对以下对话事件流做记忆抽取。
+
+对话事件流：
+{events_json}
+
+抽取要求：
+1. summary：三句话以内，概括这次会话做了什么、失败过什么、怎么修正的。
+2. candidate_memories：只抽取以后任务还会用得上的信息；寒暄、闲聊、口误不要抽。
+   - kind 分类：user_preference（用户偏好）、fact（事实）、lesson（教训）、skill（技能/方法）
+   - statement 要写成脱离本次对话也能读懂的一句话
+   - durable 为 true 仅当用户明确说"以后都这样"或类似长期要求
+   - evidence_event_ids 只能引用输入里出现过的 event_id
+3. process_memory：记录当前过程状态——失败的工具、待确认的点、已修正的做法。
+   - status 为 open 表示还没解决，resolved 表示已修正
+
+字段约束：
+- summary 不超过 3 句话
+- candidate_memories 数量不超过 5 条
+- process_memory 数量不超过 5 条
+- evidence_event_ids 只能引用输入中出现过的 event_id
+
+输出严格 JSON 格式：
+{{
+    "summary": "三句话以内的会话概括",
+    "candidate_memories": [
+        {{
+            "kind": "user_preference | fact | lesson | skill",
+            "statement": "脱离本次对话也能读懂的一句话",
+            "durable": false,
+            "evidence_event_ids": ["evt_xxx_1"]
+        }}
+    ],
+    "process_memory": [
+        {{
+            "note": "当前过程状态描述",
+            "status": "open | resolved",
+            "evidence_event_ids": ["evt_xxx_2"]
+        }}
+    ]
+}}"""
+
+
+# 升格判断 Prompt（spec 4.3 节）
+# 输入：新候选记忆 + 已有候选记忆池；输出：promoted_records + unpromoted_candidate_ids + updated_candidate_counts
+PROMOTION_PROMPT = """你是一个记忆升格判断模块。以下是新产生的候选记忆和已有的候选记忆池。
+
+新候选记忆：
+{new_candidates_json}
+
+已有候选记忆池：
+{existing_candidates_json}
+
+请判断哪些候选记忆可以升格为长期记忆。
+
+规则：
+1. 只升格跨会话仍然可能影响行为的内容
+2. 升格通道只有三条：用户显式长期要求、跨会话重复出现、工具失败后形成的修正规则
+3. 同一件事的不同表述要合并成一条，不要重复升格
+4. 合并后的 statement 要更全面、更通用
+5. category 按候选的 kind 归类：user_preference 还是 user_preference；fact 归 stable_fact；lesson 归 project_rule；skill 归 capability_method
+6. recall_keywords 由你根据语义生成，是这条记忆的检索词
+7. 每条都要保留 evidence_event_ids，能追回原始事件
+8. 不要把一次性地点、票务闲聊、口误升格为长期规则
+9. 宁紧勿松：不确定是否该升格的，不要升格
+10. promotion_reason 三选一：explicit_user_instruction（用户明确要求）、repeated_across_sessions（跨会话重复出现，promotion_count >= {promotion_threshold}）、tool_failure_evidence（工具失败后形成的修正规则）
+
+输出严格 JSON 格式：
+{{
+    "promoted_records": [
+        {{
+            "category": "user_preference | project_rule | stable_fact | capability_method",
+            "statement": "通用化的独立陈述",
+            "promotion_reason": "explicit_user_instruction | repeated_across_sessions | tool_failure_evidence",
+            "recall_keywords": ["关键词1", "关键词2"],
+            "evidence_event_ids": ["evt_xxx_1", "evt_yyy_2"],
+            "source_candidate_ids": ["cand_1", "cand_2"],
+            "is_merged": false
+        }}
+    ],
+    "unpromoted_candidate_ids": ["cand_3"],
+    "updated_candidate_counts": {{
+        "cand_1": 2
+    }}
+}}
+
+说明：
+- promoted_records：可以升格的记录，可合并多条同义候选
+- unpromoted_candidate_ids：明确不升格的新候选 ID
+- updated_candidate_counts：当某条已有候选与新候选同义时，将其 ID 和更新后的 promotion_count 写入此字段
+- is_merged：true 表示该升格记录合并了多条候选"""
+
+
+# 方法卡抽取 Prompt（spec 5.3 节）
+# 输入：会话记忆 JSON + 已有长期记忆索引；输出：method_cards 列表
+METHOD_EXTRACTION_PROMPT = """你是一个方法抽取模块。请从以下会话记忆中抽取值得长期保存的能力/方法。
+
+会话记忆：
+{session_memory_json}
+
+已有长期记忆（避免重复）：
+{long_term_memory_index}
+
+抽取要求：
+1. 能力/方法记录的是可复用的做法，不是某一次任务的结论
+2. 优先从失败后修正、工具验证、反复出现的成功做法里抽取
+3. 没有证据支撑的方法不要写
+4. 与已有长期记忆重复的方法不要写
+5. method_name 要简明扼要，能体现方法的本质
+6. method 步骤要写成可执行的指令，不要写某次任务的具体参数
+7. validation 是验证方法是否生效的标准
+8. failure_signals 是该方法失效的典型信号
+
+输出严格 JSON 格式：
+{{
+    "method_cards": [
+        {{
+            "method_name": "方法名称（如：财务分析标准流程）",
+            "applies_when": "适用场景描述",
+            "method": [
+                "步骤1：具体可执行的指令",
+                "步骤2：具体可执行的指令"
+            ],
+            "validation": [
+                "验证标准1",
+                "验证标准2"
+            ],
+            "failure_signals": [
+                "失败信号1",
+                "失败信号2"
+            ],
+            "recall_keywords": ["检索词1", "检索词2"],
+            "evidence_event_ids": ["evt_xxx_1"]
+        }}
+    ]
+}}
+
+说明：
+- 只抽取有证据支撑的方法（evidence_event_ids 非空）
+- 没有可抽取的方法时，method_cards 返回空数组 []
+- method_name 与已有长期记忆重复时，新方法卡会替换旧版（同名替换）"""
+
+
+# 检索关键词生成 Prompt（spec 8.3.2 节）
+# 输入：用户任务 + 查询类型 + 已有全局性记忆索引；输出：query_keywords + preferred_categories + reason
+RECALL_KEYWORDS_PROMPT = """你是一个记忆检索模块。当前用户任务如下：
+
+用户任务：{user_query}
+查询类型：{query_type}
+
+以下是已有全局性记忆的索引（不含全文）：
+{memory_index}
+
+请为这个任务生成检索关键词，用于从全局性记忆中取回最相关的经验。
+
+要求：
+1. 关键词要贴近记忆索引里已有的表达（方法、限制、验证动作）
+2. 不要只写新任务中的实体名称
+3. 写出这次优先需要哪几类全局性记忆（user_preference / project_rule / stable_fact / capability_method）
+4. 关键词数量 3-5 个
+
+输出严格 JSON 格式：
+{{
+    "query_keywords": ["关键词1", "关键词2", "关键词3"],
+    "preferred_categories": ["capability_method", "project_rule"],
+    "reason": "一句话说明为什么这些词和类别适合当前任务"
+}}
+
+说明：
+- query_keywords：用于 rerank 阶段的关键词匹配
+- preferred_categories：匹配类别的经验在 rerank 时给予额外加分
+- preferred_categories 可以为空数组 []，表示不限制类别"""
+
+
 # reactive_agent System Prompt（自然语言输出）
 REACTIVE_SYSTEM_PROMPT = """当前日期: {current_date}
 时间上下文: {time_context}

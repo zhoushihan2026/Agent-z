@@ -462,7 +462,7 @@ def run_agent_stream(message: str, session_id: str, graph, session_manager, repo
     start_time = time.time()
 
     # 创建初始状态
-    initial_state = create_initial_state(user_query=message)
+    initial_state = create_initial_state(user_query=message, session_id=session_id)
 
     # 短期记忆注入：同一会话内，把之前轮次的消息也填入 messages，
     # 让 LLM 能看到之前的对话上下文（spec 2.5.7 节 20 轮截断）

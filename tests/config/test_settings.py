@@ -122,9 +122,9 @@ class TestMemoryConfig:
         assert settings.LONG_TERM_TOP_K == 3
 
     def test_LONG_TERM_SIMILARITY_THRESHOLD默认值(self):
-        """LONG_TERM_SIMILARITY_THRESHOLD 默认应为 0.7。"""
+        """LONG_TERM_SIMILARITY_THRESHOLD 默认应为 0.45（适配 dashscope text-embedding-v4 中文语义相似度分布）。"""
         settings = Settings()
-        assert settings.LONG_TERM_SIMILARITY_THRESHOLD == 0.7
+        assert settings.LONG_TERM_SIMILARITY_THRESHOLD == 0.45
 
     def test_MEMORY_SESSION_DIR默认值(self):
         """MEMORY_SESSION_DIR 默认应为 data/memory/session_memory（spec 13.1 节 V2 新增）。"""
@@ -145,6 +145,74 @@ class TestMemoryConfig:
         """MEMORY_MAX_CANDIDATES 默认应为 100（spec 13.1 节）。"""
         settings = Settings()
         assert settings.MEMORY_MAX_CANDIDATES == 100
+
+    def test_MEMORY_RECALL_CANDIDATE_TOP_K默认值(self):
+        """MEMORY_RECALL_CANDIDATE_TOP_K 默认应为 10（spec 13.1 节 V2 新增）。"""
+        settings = Settings()
+        assert settings.MEMORY_RECALL_CANDIDATE_TOP_K == 10
+
+    def test_MEMORY_RECALL_MIN_SIMILARITY默认值(self):
+        """MEMORY_RECALL_MIN_SIMILARITY 默认应为 0.5（spec 13.1 节 V2 新增）。"""
+        settings = Settings()
+        assert settings.MEMORY_RECALL_MIN_SIMILARITY == 0.5
+
+    def test_MEMORY_RECALL_KEYWORD_WEIGHT默认值(self):
+        """MEMORY_RECALL_KEYWORD_WEIGHT 默认应为 0.4（spec 13.1 节 V2 新增）。"""
+        settings = Settings()
+        assert settings.MEMORY_RECALL_KEYWORD_WEIGHT == 0.4
+
+    def test_MEMORY_RECALL_SIMILARITY_WEIGHT默认值(self):
+        """MEMORY_RECALL_SIMILARITY_WEIGHT 默认应为 0.6（spec 13.1 节 V2 新增）。"""
+        settings = Settings()
+        assert settings.MEMORY_RECALL_SIMILARITY_WEIGHT == 0.6
+
+    def test_环境变量可覆盖Recall配置(self, monkeypatch):
+        """环境变量应能覆盖 Recall 配置默认值。"""
+        monkeypatch.setenv("MEMORY_RECALL_CANDIDATE_TOP_K", "20")
+        monkeypatch.setenv("MEMORY_RECALL_MIN_SIMILARITY", "0.6")
+        settings = Settings()
+        assert settings.MEMORY_RECALL_CANDIDATE_TOP_K == 20
+        assert settings.MEMORY_RECALL_MIN_SIMILARITY == 0.6
+
+    def test_CONTEXT_ASSEMBLER_MAX_TOKENS默认值(self):
+        """CONTEXT_ASSEMBLER_MAX_TOKENS 默认应为 80000（spec 13.1 节 V2 新增）。"""
+        settings = Settings()
+        assert settings.CONTEXT_ASSEMBLER_MAX_TOKENS == 80000
+
+    def test_CONTEXT_ASSEMBLER_KEEP_RECENT_ROUNDS默认值(self):
+        """CONTEXT_ASSEMBLER_KEEP_RECENT_ROUNDS 默认应为 3（spec 13.1 节 V2 新增）。"""
+        settings = Settings()
+        assert settings.CONTEXT_ASSEMBLER_KEEP_RECENT_ROUNDS == 3
+
+    def test_CONTEXT_ASSEMBLER_MIN_ROUNDS默认值(self):
+        """CONTEXT_ASSEMBLER_MIN_ROUNDS 默认应为 5（spec 13.1 节 V2 新增）。"""
+        settings = Settings()
+        assert settings.CONTEXT_ASSEMBLER_MIN_ROUNDS == 5
+
+    def test_MEMORY_PROMOTION_REPEAT_THRESHOLD默认值(self):
+        """MEMORY_PROMOTION_REPEAT_THRESHOLD 默认应为 2（spec 13.1 节 V2 新增）。"""
+        settings = Settings()
+        assert settings.MEMORY_PROMOTION_REPEAT_THRESHOLD == 2
+
+    def test_MEMORY_INJECT_MAX_SINGLE_TOKENS默认值(self):
+        """MEMORY_INJECT_MAX_SINGLE_TOKENS 默认应为 200（spec 13.1 节 V2 新增）。"""
+        settings = Settings()
+        assert settings.MEMORY_INJECT_MAX_SINGLE_TOKENS == 200
+
+    def test_MEMORY_INJECT_MAX_TOTAL_TOKENS默认值(self):
+        """MEMORY_INJECT_MAX_TOTAL_TOKENS 默认应为 500（spec 13.1 节 V2 新增）。"""
+        settings = Settings()
+        assert settings.MEMORY_INJECT_MAX_TOTAL_TOKENS == 500
+
+    def test_环境变量可覆盖Inject与Promotion配置(self, monkeypatch):
+        """环境变量应能覆盖 Inject 与 Promotion 配置默认值。"""
+        monkeypatch.setenv("MEMORY_PROMOTION_REPEAT_THRESHOLD", "3")
+        monkeypatch.setenv("MEMORY_INJECT_MAX_SINGLE_TOKENS", "300")
+        monkeypatch.setenv("MEMORY_INJECT_MAX_TOTAL_TOKENS", "600")
+        settings = Settings()
+        assert settings.MEMORY_PROMOTION_REPEAT_THRESHOLD == 3
+        assert settings.MEMORY_INJECT_MAX_SINGLE_TOKENS == 300
+        assert settings.MEMORY_INJECT_MAX_TOTAL_TOKENS == 600
 
 
 class TestFrontendConfig:

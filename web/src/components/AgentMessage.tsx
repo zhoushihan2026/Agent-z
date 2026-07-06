@@ -137,11 +137,11 @@ export function AgentMessage({ message }: AgentMessageProps) {
               </div>
             )}
             <div
-              className="prose prose-sm max-w-none text-[14px] leading-[1.8] text-[#1E293B]
+              className="prose prose-sm max-w-none text-[14px] leading-[1.8] text-[#1E293B] break-words
                 [&_h1]:text-[20px] [&_h1]:font-bold [&_h1]:mt-5 [&_h1]:mb-3
                 [&_h2]:text-[17px] [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2
                 [&_h3]:text-[15px] [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5
-                [&_p]:mb-2 [&_p]:leading-[1.8]
+                [&_p]:mb-2 [&_p]:leading-[1.8] [&_p]:break-words
                 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2
                 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2
                 [&_li]:mb-1 [&_li]:leading-[1.7]
@@ -149,10 +149,12 @@ export function AgentMessage({ message }: AgentMessageProps) {
                 [&_blockquote]:border-l-0 [&_blockquote]:pl-0 [&_blockquote]:text-[#475569] [&_blockquote]:italic
                 [&_code]:bg-[#F1F5F9] [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[13px] [&_code]:font-mono
                 [&_pre]:bg-[#F8FAFC] [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:mb-3
+                [&_pre_code]:whitespace-pre-wrap [&_pre_code]:break-all
                 [&_table]:w-full [&_table]:border-collapse [&_table]:mb-3
                 [&_th]:border [&_th]:border-[#E2E8F0] [&_th]:px-3 [&_th]:py-2 [&_th]:bg-[#F8FAFC] [&_th]:text-left [&_th]:font-semibold [&_th]:text-[13px]
                 [&_td]:border [&_td]:border-[#E2E8F0] [&_td]:px-3 [&_td]:py-2 [&_td]:text-[13px]
                 [&_img]:max-w-full [&_img]:rounded-lg
+                [&_a]:break-all [&_a]:text-[#2563EB]
                 [&_hr]:border-[#E2E8F0] [&_hr]:my-4"
               dangerouslySetInnerHTML={{ __html: reportHtml }}
             />

@@ -124,7 +124,7 @@ function ReactStepBlock({ step, isStreaming }: ReactStepBlockProps) {
           labelColor={hasError ? "#EF4444" : "#22C55E"}
           summary={displayedObserve}
         >
-          <span className={hasError ? "text-[#991B1B]" : ""}>{displayedObserve}</span>
+          <span className={`whitespace-pre-wrap break-words ${hasError ? "text-[#991B1B]" : ""}`}>{displayedObserve}</span>
         </CollapsibleBlock>
       )}
 
@@ -159,7 +159,7 @@ function formatArgs(args: Record<string, unknown>): string {
 export function ThinkPanel({ reactSteps, isStreaming, mode = "deliberative" }: ThinkPanelProps) {
   if (reactSteps.length === 0) return null;
 
-  const title = mode === "reactive" || mode === "quick" ? "快速响应过程" : "思考过程";
+  const title = "思考过程";
 
   return (
     <div className="space-y-2">

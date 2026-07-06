@@ -28,6 +28,9 @@ class PlanStep(TypedDict):
 
 class AgentState(TypedDict):
     """LangGraph 图中流转的核心状态对象。"""
+    # 会话标识
+    session_id: str  # 会话 ID，用于记忆系统按会话存储和检索
+
     # 输入
     user_query: str
 
@@ -71,14 +74,16 @@ class AgentState(TypedDict):
 
     # 过程记忆（V2 新增）：当前会话内的临时状态追踪
     # 每条: {"note": str, "status": "open|resolved", "evidence_event_ids": list, "timestamp": str}
-    process_memory: Annotated[list, lambda old, new: old + new]
+    # 使用替换语义：observe_node 返回更新后的完整列表（含状态修改 open→resolved）
+    process_memory: Annotated[list, lambda old, new: new]
 
 
-def create_initial_state(user_query: str) -> dict:
+def create_initial_state(user_query: str, session_id: str = "unknown") -> dict:
     """创建 AgentState 的初始状态。
 
     参数:
         user_query: 用户原始查询
+        session_id: 会话 ID，用于记忆系统按会话存储和检索
 
     返回:
         包含所有字段默认值的 AgentState 字典
@@ -87,6 +92,9 @@ def create_initial_state(user_query: str) -> dict:
     # 供 reactive_agent / think_node 直接通过 messages 列表与 LLM 交互
     from langchain_core.messages import HumanMessage
     return {
+        # 会话标识
+        "session_id": session_id,
+
         # 输入
         "user_query": user_query,
 

@@ -241,11 +241,14 @@ class SessionManager:
         return list(reversed(kept))
 
     def get_messages_for_llm(self, session_id: str) -> list:
-        """加载会话消息并转为 LangChain 格式，应用 token 截断。
+        """加载会话消息并转为 LangChain 格式，应用上下文组装。
 
-        对应 phase2-spec.md 3.2 节：短期记忆 token 超限截断。
+        对应 memory-v2-spec.md 第七章：上下文组装器。
         先从 SQLite 加载所有消息，转换为 LangChain BaseMessage 列表，
-        再通过 memory.short_term 的 token 截断策略处理。
+        再通过 memory.context_assembler 的上下文组装策略处理：
+        - 老轮次用会话内记忆的压缩摘要替换（而非直接删除）
+        - 最近 keep_recent_rounds 轮完整保留
+        - token 超限时从最旧的压缩摘要开始删
 
         参数:
             session_id: 会话 ID
@@ -267,16 +270,17 @@ class SessionManager:
             elif m["role"] == "tool":
                 msgs.append(ToolMessage(content=m["content"], tool_call_id=m.get("id", "")))
 
-        # Token 截断（phase2 新增）
-        try:
-            from memory.short_term import truncate_by_tokens
-            from config.settings import settings
-            msgs = truncate_by_tokens(
-                msgs,
-                max_tokens=settings.SHORT_TERM_MAX_TOKENS,
-            )
-        except ImportError:
-            pass
+        # 上下文组装（V2：替代原 short_term 的截断策略）
+        from memory.context_assembler import ContextAssembler
+        from config.settings import settings
+        assembler = ContextAssembler()
+        msgs = assembler.assemble_context(
+            session_id=session_id,
+            current_messages=msgs,
+            max_tokens=settings.CONTEXT_ASSEMBLER_MAX_TOKENS,
+            keep_recent_rounds=settings.CONTEXT_ASSEMBLER_KEEP_RECENT_ROUNDS,
+            min_rounds=settings.CONTEXT_ASSEMBLER_MIN_ROUNDS,
+        )
 
         return msgs
 

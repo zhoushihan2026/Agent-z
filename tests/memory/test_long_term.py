@@ -235,7 +235,7 @@ class TestEmbedding:
         ltm = LongTermMemory(embedding_provider="mock")
         vec = ltm._embed("测试文本")
         assert isinstance(vec, list)
-        assert len(vec) == 1536  # spec 3.3.3 节：维度 1536
+        assert len(vec) == 1024  # dashscope text-embedding-v4 输出 1024 维
         ltm.close()
 
     def test_embedding缓存相同文本(self):
@@ -287,4 +287,342 @@ class TestEmbedding:
             "input": "测试文本",
             "api_key": "test-key",
         }
+        ltm.close()
+
+
+class TestAddPromotedRecord:
+    """测试 V2 新接口 add_promoted_record（spec 15.2 节）。
+
+    V2 接口接收 promoter 产出的升格记录，不做事后过滤（质量过滤在 compressor 完成）。
+    去重逻辑改为 recall_keywords 重叠率（spec 15.2 节）。
+    """
+
+    @pytest.fixture
+    def tmp_dir(self):
+        """创建临时目录避免测试间数据污染。"""
+        with tempfile.TemporaryDirectory() as td:
+            yield td
+
+    @pytest.fixture
+    def sample_record(self):
+        """单个升格记录样本。"""
+        return {
+            "experience_id": "exp_test_001",
+            "namespace": "default",
+            "category": "project_rule",
+            "statement": "python_execute 必须加 print() 才能看到计算结果",
+            "promotion_reason": "tool_failure_evidence",
+            "evidence_event_ids": ["evt_sess_001_4"],
+            "recall_keywords": ["python_execute", "print", "输出", "计算结果"],
+            "source_candidate_ids": ["cand_001"],
+            "is_merged": False,
+            "task_type": "analytical",
+            "query": "分析中芯国际2024年财务表现",
+            "quality_score": 0.75,
+            "timestamp": "2026-07-05T10:00:00",
+        }
+
+    def test_add_promoted_record返回experience_id(self, tmp_dir, sample_record):
+        """add_promoted_record 应返回 experience_id。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        exp_id = ltm.add_promoted_record(sample_record)
+
+        assert exp_id is not None
+        assert exp_id.startswith("exp_")
+        ltm.close()
+
+    def test_add_promoted_record生成embedding基于statement(self, tmp_dir, sample_record):
+        """add_promoted_record 应基于 statement 生成 embedding（不是 query）。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        ltm.add_promoted_record(sample_record)
+
+        # 内部 _experiences 应包含 embedding 字段
+        assert len(ltm._experiences) == 1
+        assert "embedding" in ltm._experiences[0]
+        assert len(ltm._experiences[0]["embedding"]) == 1024
+        ltm.close()
+
+    def test_add_promoted_record保留V2新字段(self, tmp_dir, sample_record):
+        """add_promoted_record 应保留 category/statement/promotion_reason/recall_keywords 等新字段。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        ltm.add_promoted_record(sample_record)
+
+        record = ltm._experiences[0]
+        assert record["category"] == "project_rule"
+        assert record["statement"] == "python_execute 必须加 print() 才能看到计算结果"
+        assert record["promotion_reason"] == "tool_failure_evidence"
+        assert record["recall_keywords"] == ["python_execute", "print", "输出", "计算结果"]
+        assert record["evidence_event_ids"] == ["evt_sess_001_4"]
+        ltm.close()
+
+    def test_recall_keywords重叠率高于0_5时去重(self, tmp_dir, sample_record):
+        """两条记录的 recall_keywords 交集/并集 > 0.5 时应视为重复，保留证据链更丰富的。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        ltm.add_promoted_record(sample_record)
+
+        # 第二条记录，recall_keywords 与第一条高度重叠（4个中3个相同）
+        new_record = {
+            "experience_id": "exp_test_002",
+            "namespace": "default",
+            "category": "project_rule",
+            "statement": "使用 python_execute 时务必输出结果",
+            "promotion_reason": "tool_failure_evidence",
+            "evidence_event_ids": ["evt_sess_002_4", "evt_sess_002_6"],  # 证据更多
+            "recall_keywords": ["python_execute", "print", "输出", "结果"],  # 3/5 重叠
+            "source_candidate_ids": ["cand_002"],
+            "is_merged": True,
+            "task_type": "analytical",
+            "query": "分析小米集团2024年财务表现",
+            "quality_score": 0.80,
+            "timestamp": "2026-07-05T11:00:00",
+        }
+
+        result_id = ltm.add_promoted_record(new_record)
+
+        # 应保留证据链更丰富的（new_record 有 2 条 evidence，sample_record 只有 1 条）
+        assert len(ltm._experiences) == 1  # 没有新增
+        assert ltm._experiences[0]["evidence_event_ids"] == ["evt_sess_002_4", "evt_sess_002_6"]
+        ltm.close()
+
+    def test_recall_keywords重叠率低于0_5时不去重(self, tmp_dir, sample_record):
+        """两条记录的 recall_keywords 交集/并集 <= 0.5 时应分别存储。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        ltm.add_promoted_record(sample_record)
+
+        # 第二条记录，recall_keywords 完全不同
+        new_record = {
+            "experience_id": "exp_test_002",
+            "namespace": "default",
+            "category": "user_preference",
+            "statement": "分析报告要附数据来源",
+            "promotion_reason": "explicit_user_instruction",
+            "evidence_event_ids": ["evt_sess_002_8"],
+            "recall_keywords": ["报告", "数据来源", "附注"],  # 与第一条无重叠
+            "source_candidate_ids": ["cand_002"],
+            "is_merged": False,
+            "task_type": "analytical",
+            "query": "分析小米集团",
+            "quality_score": 0.70,
+            "timestamp": "2026-07-05T11:00:00",
+        }
+
+        ltm.add_promoted_record(new_record)
+
+        # 两条都应保留
+        assert len(ltm._experiences) == 2
+        ltm.close()
+
+
+class TestGetMemoryIndex:
+    """测试 get_memory_index（spec 15.2 节）。"""
+
+    @pytest.fixture
+    def tmp_dir(self):
+        """创建临时目录避免测试间数据污染。"""
+        with tempfile.TemporaryDirectory() as td:
+            yield td
+
+    def test_返回所有记录的索引(self, tmp_dir):
+        """get_memory_index 应返回所有记录的索引（不含 embedding）。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        record = {
+            "experience_id": "exp_001",
+            "namespace": "default",
+            "category": "project_rule",
+            "statement": "测试记录",
+            "promotion_reason": "tool_failure_evidence",
+            "evidence_event_ids": [],
+            "recall_keywords": ["测试"],
+            "source_candidate_ids": [],
+            "is_merged": False,
+            "task_type": "analytical",
+            "query": "测试查询",
+            "quality_score": 0.7,
+            "timestamp": "2026-07-05T10:00:00",
+        }
+        ltm.add_promoted_record(record)
+
+        index = ltm.get_memory_index()
+
+        assert len(index) == 1
+        assert index[0]["experience_id"] == "exp_001"
+        assert index[0]["category"] == "project_rule"
+        ltm.close()
+
+    def test_索引不包含embedding字段(self, tmp_dir):
+        """get_memory_index 返回的记录不应包含 embedding 字段。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        record = {
+            "experience_id": "exp_001",
+            "namespace": "default",
+            "category": "project_rule",
+            "statement": "测试",
+            "promotion_reason": "tool_failure_evidence",
+            "evidence_event_ids": [],
+            "recall_keywords": ["测试"],
+            "source_candidate_ids": [],
+            "is_merged": False,
+            "task_type": "analytical",
+            "query": "测试",
+            "quality_score": 0.7,
+            "timestamp": "2026-07-05T10:00:00",
+        }
+        ltm.add_promoted_record(record)
+
+        index = ltm.get_memory_index()
+
+        assert "embedding" not in index[0]
+        ltm.close()
+
+    def test_空记忆返回空列表(self, tmp_dir):
+        """没有记忆时应返回空列表。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        index = ltm.get_memory_index()
+
+        assert index == []
+        ltm.close()
+
+
+class TestSearchCandidates:
+    """测试 search_candidates（spec 15.2 节）。"""
+
+    @pytest.fixture
+    def tmp_dir(self):
+        """创建临时目录避免测试间数据污染。"""
+        with tempfile.TemporaryDirectory() as td:
+            yield td
+
+    def test_返回top_k条候选(self, tmp_dir):
+        """search_candidates 应返回 top_k 条候选记录。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        # 写入 3 条记录
+        for i in range(3):
+            record = {
+                "experience_id": f"exp_{i}",
+                "namespace": "default",
+                "category": "project_rule",
+                "statement": f"测试记录{i}",
+                "promotion_reason": "tool_failure_evidence",
+                "evidence_event_ids": [],
+                "recall_keywords": [f"关键词{i}"],
+                "source_candidate_ids": [],
+                "is_merged": False,
+                "task_type": "analytical",
+                "query": f"查询{i}",
+                "quality_score": 0.7,
+                "timestamp": "2026-07-05T10:00:00",
+            }
+            ltm.add_promoted_record(record)
+
+        # 用任意 embedding 搜索
+        query_emb = ltm._embed("测试查询")
+        results = ltm.search_candidates(query_emb, top_k=2)
+
+        assert len(results) <= 2  # 最多 top_k 条
+        assert len(results) > 0  # 至少有结果
+        ltm.close()
+
+    def test_返回结果包含similarity字段(self, tmp_dir):
+        """search_candidates 返回的每条记录应包含 similarity 字段（供 recall rerank 使用）。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        record = {
+            "experience_id": "exp_001",
+            "namespace": "default",
+            "category": "project_rule",
+            "statement": "python_execute 必须加 print 才能看到结果",
+            "promotion_reason": "tool_failure_evidence",
+            "evidence_event_ids": [],
+            "recall_keywords": ["python_execute", "print"],
+            "source_candidate_ids": [],
+            "is_merged": False,
+            "task_type": "analytical",
+            "query": "测试",
+            "quality_score": 0.7,
+            "timestamp": "2026-07-05T10:00:00",
+        }
+        ltm.add_promoted_record(record)
+
+        query_emb = ltm._embed("python_execute print")
+        results = ltm.search_candidates(query_emb, top_k=5)
+
+        assert len(results) == 1
+        assert "similarity" in results[0]
+        assert isinstance(results[0]["similarity"], float)
+        # mock embedding 基于哈希，相似度可能略低于 0，范围放宽到 [-1, 1]
+        assert -1.0 <= results[0]["similarity"] <= 1.0
+        ltm.close()
+
+    def test_空记忆返回空列表(self, tmp_dir):
+        """没有记忆时应返回空列表。"""
+        from memory.long_term import LongTermMemory
+
+        ltm = LongTermMemory(
+            embedding_provider="mock",
+            index_path=os.path.join(tmp_dir, "faiss.bin"),
+            meta_path=os.path.join(tmp_dir, "exp.jsonl"),
+        )
+        query_emb = ltm._embed("测试")
+        results = ltm.search_candidates(query_emb, top_k=5)
+
+        assert results == []
         ltm.close()

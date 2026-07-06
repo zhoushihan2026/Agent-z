@@ -36,3 +36,7 @@ def create_app(db_path: str = "data/sessions.db",
     app.include_router(reports.router, prefix="/api")
 
     return app
+
+
+# 模块级 app 实例，供 uvicorn 直接引用
+app = create_app()

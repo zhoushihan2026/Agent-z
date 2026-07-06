@@ -7,12 +7,15 @@
 """
 import hashlib
 import json
+import logging
 import os
 import time
 import uuid
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +75,7 @@ class LongTermMemory:
         meta_path: str = "data/long_term_memory/experiences.jsonl",
         embedding_provider: str = "dashscope",
         embedding_model: str = "text-embedding-v4",
-        embedding_dim: int = 1536,
+        embedding_dim: int = 1024,
     ):
         """初始化长期记忆。
 
@@ -119,7 +122,18 @@ class LongTermMemory:
             try:
                 import faiss
                 if os.path.exists(self._index_path):
-                    self._faiss = faiss.read_index(self._index_path)
+                    loaded_index = faiss.read_index(self._index_path)
+                    # 索引维度与当前 embedding_dim 不匹配时重建索引
+                    if loaded_index.d != self._embedding_dim:
+                        logger.warning(
+                            "FAISS 索引维度 %d 与当前 embedding_dim %d 不匹配，重建索引",
+                            loaded_index.d, self._embedding_dim,
+                        )
+                        self._faiss = faiss.IndexFlatIP(self._embedding_dim)
+                        # 立即用已有经验记录的 embedding 重建索引
+                        self._rebuild_faiss_index()
+                    else:
+                        self._faiss = loaded_index
                     self._use_faiss = True
                 else:
                     self._faiss = faiss.IndexFlatIP(self._embedding_dim)
@@ -395,6 +409,140 @@ class LongTermMemory:
             results.append(exp_copy)
         return results
 
+    def add_promoted_record(self, record: dict) -> Optional[str]:
+        """V2 接口：接收 promoter 产出的升格记录，存入长期记忆（spec 15.2 节）。
+
+        与 V1 add_experience 区别：
+        - 不做事后过滤（质量过滤在 compressor 完成）
+        - 基于 statement 生成 embedding（不是 query）
+        - 用 recall_keywords 重叠率（Jaccard 相似度）去重，>0.5 视为重复
+        - 重复时保留证据链更丰富的（evidence_event_ids 更多）
+
+        参数:
+            record: 升格记录，需含 statement/recall_keywords/evidence_event_ids 等字段
+
+        返回:
+            experience_id 或 None
+        """
+        # 提取 recall_keywords 用于去重
+        new_keywords = set(record.get("recall_keywords", []))
+
+        # recall_keywords 重叠率去重
+        if new_keywords:
+            for idx, existing in enumerate(self._experiences):
+                existing_keywords = set(existing.get("recall_keywords", []))
+                if not existing_keywords:
+                    continue
+                # 计算 Jaccard 相似度：交集/并集
+                intersection = new_keywords & existing_keywords
+                union = new_keywords | existing_keywords
+                overlap = len(intersection) / len(union) if union else 0.0
+
+                if overlap > 0.5:
+                    # 视为重复，保留证据链更丰富的
+                    new_evidence = record.get("evidence_event_ids", [])
+                    existing_evidence = existing.get("evidence_event_ids", [])
+                    if len(new_evidence) > len(existing_evidence):
+                        # 新记录证据更多，替换现有记录，保留 experience_id
+                        exp_id = existing.get("experience_id", f"exp_{uuid.uuid4().hex[:12]}")
+                        vec = self._embed(record.get("statement", ""))
+                        new_record = dict(record)
+                        new_record["experience_id"] = exp_id
+                        new_record["embedding"] = vec
+                        self._experiences[idx] = new_record
+                        self._rebuild_faiss_index()
+                        self._save()
+                        return exp_id
+                    else:
+                        # 现有记录证据更多或相同，保留现有记录
+                        return existing.get("experience_id")
+
+        # 不重复，新增记录
+        exp_id = record.get("experience_id") or f"exp_{uuid.uuid4().hex[:12]}"
+        vec = self._embed(record.get("statement", ""))
+        new_record = dict(record)
+        new_record["experience_id"] = exp_id
+        new_record["embedding"] = vec
+        self._experiences.append(new_record)
+
+        # 更新 FAISS 索引
+        vec_np = np.array([vec], dtype=np.float32)
+        if self._use_faiss and self._faiss is not None:
+            self._faiss.add(vec_np)
+
+        self._save()
+        return exp_id
+
+    def get_memory_index(self) -> List[Dict[str, Any]]:
+        """返回所有记忆记录的索引（不含 embedding）（spec 15.2 节）。
+
+        返回:
+            记录列表，每条记录不含 embedding 字段
+        """
+        result = []
+        for exp in self._experiences:
+            exp_copy = dict(exp)
+            exp_copy.pop("embedding", None)
+            result.append(exp_copy)
+        return result
+
+    def search_candidates(
+        self,
+        query_embedding: List[float],
+        top_k: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """基于 embedding 向量检索候选记忆（spec 15.2 节）。
+
+        供 recall 模块调用：FAISS 向量检索 + 线性扫描降级。
+        返回结果含 similarity 字段，供 recall 做 rerank。
+
+        参数:
+            query_embedding: 查询向量
+            top_k: 返回条数上限
+
+        返回:
+            记录列表（按相似度降序，不含 embedding 字段，含 similarity 字段）
+        """
+        if not self._experiences:
+            return []
+
+        query_np = np.array([query_embedding], dtype=np.float32)
+
+        if self._use_faiss and self._faiss is not None:
+            try:
+                similarities, indices = self._faiss.search(
+                    query_np, min(top_k, len(self._experiences))
+                )
+                results = []
+                for sim, idx in zip(similarities[0], indices[0]):
+                    if idx < 0 or idx >= len(self._experiences):
+                        continue
+                    exp = dict(self._experiences[idx])
+                    exp.pop("embedding", None)
+                    exp["similarity"] = float(sim)
+                    results.append(exp)
+                return results
+            except Exception:
+                pass
+
+        # 降级：线性扫描
+        scored = []
+        for exp in self._experiences:
+            emb = exp.get("embedding")
+            if emb is None:
+                continue
+            sim = _cosine_similarity(query_embedding, emb)
+            scored.append((sim, exp))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        results = []
+        for sim, exp in scored[:top_k]:
+            exp_copy = dict(exp)
+            exp_copy.pop("embedding", None)
+            exp_copy["similarity"] = float(sim)
+            results.append(exp_copy)
+        return results
+
     def clear(self):
         """清空所有经验（测试用）。"""
         self._experiences = []
@@ -407,6 +555,12 @@ class LongTermMemory:
         self._cache = {}
         self._save()
 
-    def close(self):
-        """关闭资源，保存状态。"""
-        self._save()
+    def close(self, save: bool = True):
+        """关闭资源。
+
+        参数:
+            save: 是否保存状态到磁盘。只读操作（如 retrieve_experiences）
+                  不应保存，避免覆盖其他实例的新增数据。
+        """
+        if save:
+            self._save()

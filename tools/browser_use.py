@@ -324,8 +324,14 @@ async def _run_browser_action(action: str, url: Optional[str] = None, index: Opt
     page = await context.get_current_page()
 
     if action == "go_to_url":
-        await page.goto(url)
-        await page.wait_for_load_state()
+        # 先快速等待 DOM 就绪，再宽松等待 load，避免慢资源阻塞
+        await page.goto(url, timeout=settings.BROWSER_TIMEOUT * 1000)
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=settings.BROWSER_TIMEOUT * 1000)
+        except Exception:
+            pass
+        # 额外等待动态内容稳定
+        await asyncio.sleep(1)
         return await _safe_page_summary(context, normalize_note)
     if action == "click_element":
         element = await context.get_dom_element_by_index(index)
@@ -359,8 +365,12 @@ async def _run_browser_action(action: str, url: Optional[str] = None, index: Opt
             if search_results:
                 first_url = search_results[0].get("url", "") or search_results[0].get("href", "")
                 if first_url:
-                    await page.goto(first_url)
-                    await page.wait_for_load_state()
+                    await page.goto(first_url, timeout=settings.BROWSER_TIMEOUT * 1000)
+                    try:
+                        await page.wait_for_load_state("domcontentloaded", timeout=settings.BROWSER_TIMEOUT * 1000)
+                    except Exception:
+                        pass
+                    await asyncio.sleep(1)
                     note = f"通过搜索 '{query}' 导航到第一个结果"
                     if normalize_note:
                         note = f"{normalize_note}; {note}"
@@ -369,8 +379,12 @@ async def _run_browser_action(action: str, url: Optional[str] = None, index: Opt
             logger.warning("browser_use web_search 搜索工具失败，回退到百度: %s", e)
         # 回退：直接打开百度搜索结果页
         import urllib.parse
-        await page.goto(f"https://www.baidu.com/s?wd={urllib.parse.quote(query)}")
-        await page.wait_for_load_state()
+        await page.goto(f"https://www.baidu.com/s?wd={urllib.parse.quote(query)}", timeout=settings.BROWSER_TIMEOUT * 1000)
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=settings.BROWSER_TIMEOUT * 1000)
+        except Exception:
+            pass
+        await asyncio.sleep(1)
         return await _safe_page_summary(context, normalize_note)
     if action == "wait":
         await asyncio.sleep(seconds or 3)
@@ -425,7 +439,7 @@ def _tool_func(action: str, url: Optional[str] = None, index: Optional[int] = No
     try:
         result = _run_coro(
             _run_browser_action(action, url, index, text, scroll_amount, tab_id, query, seconds, keys, normalize_note),
-            timeout=max(5, settings.BROWSER_TIMEOUT + 5),
+            timeout=max(30, settings.BROWSER_TIMEOUT + 30),
         )
         if not settings.BROWSER_KEEP_SESSION:
             _run_coro(_cleanup_browser_context(), timeout=10)
