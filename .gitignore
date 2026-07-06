@@ -56,8 +56,11 @@ Thumbs.db
 *.bin
 *.faiss
 *.png
+!docs/diagrams/*.png
 *.jpg
+!docs/diagrams/*.jpg
 *.svg
+!docs/diagrams/*.svg
 
 # References (external documents)
 references/
